@@ -67,8 +67,9 @@ function loadScene()
 
 function update()
 {
-    angulo += 0.01;
-    esferaCubo.rotation.y = angulo;
+    arboles.rotation.y += 0.01;
+    montañas.rotation.y += 0.01;
+    lago.rotation.y += 0.01;
 }
 
 function render()

@@ -5,7 +5,7 @@
  * Seis objetos organizados en un grafo de escena con
  * transformaciones, animacion basica y modelos importados
  * 
- * @author 
+ * @author <bpucsal@inf.upv.es>, 2024
  * 
  */
 
@@ -17,9 +17,7 @@ import {GLTFLoader} from "../lib/GLTFLoader.module.js";
 let renderer, scene, camera;
 
 // Otras globales
-/*******************
- * TO DO: Variables globales de la aplicacion
- *******************/
+let arboles, montañas, lago;
 
 // Acciones
 init();
@@ -31,9 +29,7 @@ function init()
     // Motor de render
     renderer = new THREE.WebGLRenderer();
     renderer.setSize( window.innerWidth, window.innerHeight );
-    /*******************
-    * TO DO: Completar el motor de render y el canvas
-    *******************/
+    document.getElementById('container').appendChild( renderer.domElement );
 
     // Escena
     scene = new THREE.Scene();
@@ -44,34 +40,35 @@ function init()
     camera.lookAt( new THREE.Vector3(0,1,0) );
 }
 
+// Escena en la que se represente un paisaje de bosque con elementos como arboles, montañas y un lago
 function loadScene()
 {
-    const material = new THREE.MeshNormalMaterial( );
+    // Arboles
+    const arbol = new THREE.Mesh( new THREE.CylinderGeometry(0.1,0.1,1,6), new THREE.MeshBasicMaterial({color:'green'}) );
+    arbol.position.set(0,0.5,0);
+    arboles = new THREE.Object3D();
+    arboles.add(arbol);
+    arboles.position.set(-2,0,0);
+    scene.add(arboles);
 
-    /*******************
-    * TO DO: Construir un suelo en el plano XZ
-    *******************/
+    // Montañas
+    const montaña = new THREE.Mesh( new THREE.ConeGeometry(0.5,1,4), new THREE.MeshBasicMaterial({color:'grey'}) );
+    montaña.position.set(0,0.5,0);
+    montañas = new THREE.Object3D();
+    montañas.add(montaña);
+    montañas.position.set(2,0,0);
+    scene.add(montañas);
 
-    /*******************
-    * TO DO: Construir una escena con 5 figuras diferentes posicionadas
-    * en los cinco vertices de un pentagono regular alredor del origen
-    *******************/
-
-    /*******************
-    * TO DO: Añadir a la escena un modelo importado en el centro del pentagono
-    *******************/
-
-    /*******************
-    * TO DO: Añadir a la escena unos ejes
-    *******************/
+    // Lago
+    const lago = new THREE.Mesh( new THREE.CylinderGeometry(1,1,0.1,20), new THREE.MeshBasicMaterial({color:'blue'}) );
+    lago.position.set(0,0,0);
+    scene.add(lago);
 }
 
 function update()
 {
-    /*******************
-    * TO DO: Modificar el angulo de giro de cada objeto sobre si mismo
-    * y del conjunto pentagonal sobre el objeto importado
-    *******************/
+    angulo += 0.01;
+    esferaCubo.rotation.y = angulo;
 }
 
 function render()

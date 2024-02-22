@@ -17,7 +17,7 @@ import {GLTFLoader} from "../lib/GLTFLoader.module.js";
 let renderer, scene, camera;
 
 // Otras globales
-let arboles, montañas, lago;
+let escena;
 
 // Acciones
 init();
@@ -43,33 +43,18 @@ function init()
 // Escena en la que se represente un paisaje de bosque con elementos como arboles, montañas y un lago
 function loadScene()
 {
-    // Arboles
-    const arbol = new THREE.Mesh( new THREE.CylinderGeometry(0.1,0.1,1,6), new THREE.MeshBasicMaterial({color:'green'}) );
-    arbol.position.set(0,0.5,0);
-    arboles = new THREE.Object3D();
-    arboles.add(arbol);
-    arboles.position.set(-2,0,0);
-    scene.add(arboles);
-
-    // Montañas
-    const montaña = new THREE.Mesh( new THREE.ConeGeometry(0.5,1,4), new THREE.MeshBasicMaterial({color:'grey'}) );
-    montaña.position.set(0,0.5,0);
-    montañas = new THREE.Object3D();
-    montañas.add(montaña);
-    montañas.position.set(2,0,0);
-    scene.add(montañas);
-
-    // Lago
-    const lago = new THREE.Mesh( new THREE.CylinderGeometry(1,1,0.1,20), new THREE.MeshBasicMaterial({color:'blue'}) );
-    lago.position.set(0,0,0);
-    scene.add(lago);
+    // Cargar escena
+    const loader = new GLTFLoader();
+    loader.load( '../models/escena.gltf', function ( gltf ) {
+        escena = gltf.scene;
+        escena.position.set(0,0,0);
+        scene.add( escena );
+    } );
 }
 
 function update()
 {
-    arboles.rotation.y += 0.01;
-    montañas.rotation.y += 0.01;
-    lago.rotation.y += 0.01;
+    
 }
 
 function render()

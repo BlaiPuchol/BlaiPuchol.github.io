@@ -45,7 +45,7 @@ function loadScene()
 {
     // Cargar escena
     const loader = new GLTFLoader();
-    loader.load( '../models/escena.gltf', function ( gltf ) {
+    loader.load( '../models/scene.gltf', function ( gltf ) {
         escena = gltf.scene;
         escena.position.set(0,0,0);
         scene.add( escena );

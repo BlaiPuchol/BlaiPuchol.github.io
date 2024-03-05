@@ -57,6 +57,7 @@ function loadScene()
 function update()
 {
     // Hacer que el torus suba y baje, como si flotase suavemente en un bucle infinito
+    if (torus)
     torus.position.y = 1 + Math.sin( Date.now() * 0.001 );
 }
 

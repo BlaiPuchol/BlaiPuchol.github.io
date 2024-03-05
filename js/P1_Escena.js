@@ -49,9 +49,11 @@ function loadScene()
         escena = gltf.scene;
         escena.position.set(0,0,0);
         scene.add( escena );
+        // Seleccionar el objeto llamado "Torus" y guardarlo en una variable global
+        torus = scene.getObjectByName('Torus');
+        console.log(torus);
+        console.log(scene)
     } );
-    // Seleccionar el objeto llamado "Torus" y guardarlo en una variable
-    torus = scene.getObjectByName('Torus');
 }
 
 function update()

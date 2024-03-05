@@ -17,7 +17,7 @@ import {GLTFLoader} from "../lib/GLTFLoader.module.js";
 let renderer, scene, camera;
 
 // Otras globales
-let escena;
+let escena, torus;
 
 // Acciones
 init();
@@ -50,11 +50,14 @@ function loadScene()
         escena.position.set(0,0,0);
         scene.add( escena );
     } );
+    // Seleccionar el objeto llamado "Torus" y guardarlo en una variable
+    torus = scene.getObjectByName('Torus');
 }
 
 function update()
 {
-    
+    // Hacer que el torus suba y baje, como si flotase suavemente en un bucle infinito
+    torus.position.y = 1 + Math.sin( Date.now() * 0.001 );
 }
 
 function render()

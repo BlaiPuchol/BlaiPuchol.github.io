@@ -20,7 +20,7 @@ import {GUI} from "../lib/lil-gui.module.min.js";
 let renderer, scene, camera;
 
 // Otras globales
-let cameraControls, effectController;
+let cameraControls, effectController, escena;
 
 // Acciones
 init();
@@ -40,7 +40,7 @@ function init()
     
     // Camara
     camera = new THREE.PerspectiveCamera( 75, window.innerWidth/window.innerHeight, 0.1,1000);
-    camera.position.set( 0.5, 2, 7 );
+    camera.position.set( 28, 22, 24);
     cameraControls = new OrbitControls( camera, renderer.domElement );
     cameraControls.target.set(0,1,0);
     camera.lookAt( new THREE.Vector3(0,1,0) );
@@ -48,11 +48,13 @@ function init()
 
 function loadScene()
 {
-    const material = new THREE.MeshNormalMaterial( {wireframe:false} );
-
-    /*******************
-    * TO DO: Misma escena que en la practica anterior
-    *******************/
+    // Cargar escena
+    const loader = new GLTFLoader();
+    loader.load( '../models/scene.gltf', function ( gltf ) {
+        escena = gltf.scene;
+        escena.position.set(0,0,0);
+        scene.add( escena );
+    } );
 
 }
 

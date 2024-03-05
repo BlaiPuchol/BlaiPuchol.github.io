@@ -20,7 +20,7 @@ import {GUI} from "../lib/lil-gui.module.min.js";
 let renderer, scene, camera;
 
 // Otras globales
-let cameraControls, effectController, escena;
+let cameraControls, effectController, escena, torus;
 
 // Acciones
 init();
@@ -54,6 +54,8 @@ function loadScene()
         escena = gltf.scene;
         escena.position.set(0,0,0);
         scene.add( escena );
+        // Seleccionar el objeto llamado "Torus" y guardarlo en una variable global
+        torus = scene.getObjectByName('Torus');
     } );
 
 }
@@ -62,33 +64,32 @@ function loadGUI()
 {
     // Definicion de los controles
 	effectController = {
-		mensaje: 'Bosque',
-		giroY: 0.0,
-		separacion: 0,
-		colorsuelo: "rgb(150,150,150)"
+        altura: 7.0,
+        velocidad: 0.001,
+        rango: 2.0,
 	};
 
 	// Creacion interfaz
 	const gui = new GUI();
 
 	// Construccion del menu
-	const h = gui.addFolder("Control esferaCubo");
-	h.add(effectController, "mensaje").name("Aplicacion");
-	h.add(effectController, "giroY", -180.0, 180.0, 0.025).name("Giro en Y");
-	h.add(effectController, "separacion", { 'Ninguna': 0, 'Media': 2, 'Total': 5 }).name("Separacion");
-    h.addColor(effectController, "colorsuelo").name("Color alambres");
+	const h = gui.addFolder("Control Torus");
+    h.add(effectController, "altura", 0.0, 10.0, 0.1).name("Altura");
+    h.add(effectController, "velocidad", 0.0, 0.01, 0.0001).name("Velocidad");
+    h.add(effectController, "rango", 0.0, 10.0, 0.1).name("Rango");
 }
 
-function update(delta)
+function update()
 {
-    /*******************
-    * TO DO: Actualizar tween
-    *******************/
+    // Hacer que el torus suba y baje, como si flotase suavemente en un bucle infinito
+    if (torus)
+    torus.position.y = effectController.altura + Math.sin( Date.now() * effectController.velocidad ) * effectController.rango;
+    TWEEN.update();
 }
 
-function render(delta)
+function render()
 {
     requestAnimationFrame( render );
-    update(delta);
+    update();
     renderer.render( scene, camera );
 }

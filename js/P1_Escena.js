@@ -51,8 +51,6 @@ function loadScene()
         scene.add( escena );
         // Seleccionar el objeto llamado "Torus" y guardarlo en una variable global
         torus = scene.getObjectByName('Torus');
-        console.log(torus);
-        console.log(scene)
     } );
 }
 
@@ -60,7 +58,7 @@ function update()
 {
     // Hacer que el torus suba y baje, como si flotase suavemente en un bucle infinito
     if (torus)
-    torus.position.y = 1 + Math.sin( Date.now() * 0.001 );
+    torus.position.y = 7 + Math.sin( Date.now() * 0.001 ) * 2;
 }
 
 function render()

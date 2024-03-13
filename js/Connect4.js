@@ -25,7 +25,7 @@ C1 = 0x1A7329;
 C2 = 0x731A1A;
 COLUMNAS = 7;
 FILAS = 6;
-TEXT = 'You\'re under suspicion for a crime, but the inspector lacks proof. Beat him in "Connect Four," his favorite game, and you might walk free...';
+TEXT = 'You\'re under suspicion for a crime, but the inspector lacks proof. Beat him in "Connect Four", his favorite game, and you might walk free...';
 
 // Definir variables para el juego
 let fichasEnJuego = new Array(COLUMNAS);

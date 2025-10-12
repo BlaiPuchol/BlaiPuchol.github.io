@@ -11,6 +11,7 @@ var moveStep = 0.5;
 var baseApertura = 1;            // distancia inicial en Z desde el centro de la mano
 let choreoTweens = [];           // tweens de la coreografía
 let danceTween = null;           // tween de la coreografía suave
+let guiAnimCtrl = null;          // referencia al botón de animación en la GUI
 
 // Helpers para crear tweens
 function refreshGUI() {
@@ -38,6 +39,7 @@ function stopChoreography() {
   TWEEN.removeAll();
   choreoTweens = [];
   animating = false;
+  updateAnimButtonName();
 }
 function startChoreography() {
   stopChoreography();
@@ -75,6 +77,7 @@ function startChoreography() {
     .start();
 
   animating = true;
+  updateAnimButtonName();
 }
 
 // 1-inicializa 
@@ -334,7 +337,16 @@ function setupGUI() {
   gui.add(effectController, 'pinzaRotZ', -40, 220, 1).name('Pinza Z (°)');
   gui.add(effectController, 'apertura', 0.2, 1.5, 0.1).name('Apertura Z');
   gui.add(effectController, 'alambre').name('Alámbrico').onChange(setWireframe);
-  gui.add(effectController, 'animar').name('Animar');
+  // Cambiar el texto del botón según el estado de animación
+  guiAnimCtrl = gui.add(effectController, 'animar');
+  updateAnimButtonName();
+}
+
+// Actualiza el nombre del botón de animación en la GUI
+function updateAnimButtonName() {
+  if (guiAnimCtrl) {
+    guiAnimCtrl.name(animating ? 'Stop' : 'Animar');
+  }
 }
 
 // Aplicar valores de la GUI al rig

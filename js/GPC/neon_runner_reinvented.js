@@ -1095,3 +1095,4 @@ function restart(){
 function showGameOver(){ return showGameOverChaos(); }
 
 init()
+

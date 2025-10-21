@@ -1,31 +1,71 @@
-<!doctype html>
-<!-- 
-  Ejemplos sobre Three.js : Cubo texturado animado
-   	Cubo con color por vertice y mapa uv sobre textura en cruz;
-   	Util para comprobar si funciona Threejs sobre el navegador.
-  rvivo@upv.es 2022
--->
-<html lang="es">
-	<head>
-		<meta charset='utf-8'>
-		<title>Threejs App</title>
-		<style>
-			body {
-				background-color: #000;
-				margin: 0px;
-				overflow: hidden;
-			}
-		</style>
-	</head>
-	<body>
-		<!-- Contenedor del app -->
-		<div id="container"></div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Neon Runner</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        #ui-container {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex; justify-content: center; align-items: center;
+            color: white; font-family: Arial, sans-serif; text-align: center;
+            pointer-events: none;
+        }
+        .ui-panel {
+            background: linear-gradient(135deg, rgba(0,234,255,0.2), rgba(157,77,255,0.25));
+            border: 1px solid rgba(0,234,255,0.35);
+            padding: 24px 48px;
+            border-radius: 16px;
+            text-shadow: 0 0 10px #00eaff;
+            box-shadow: 0 0 24px rgba(0,234,255,0.25), inset 0 0 24px rgba(255,43,255,0.15);
+            pointer-events: auto;
+        }
+        .ui-panel h1 { font-size: 4em; margin: 0 0 10px; }
+        .ui-panel p { font-size: 1.5em; margin: 6px 0; }
 
-		<!-- Scripts de biblioteca -->
-		<script src="../lib/three.min_r140.js"></script>
-		<script src="../lib/OrbitControls.js"></script>
+        /* HUD rounded pills */
+        .hud-pill {
+            position: absolute;
+            color: #fff;
+            font: 20px Arial;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, #00eaff, #9d4dff);
+            box-shadow: 0 0 12px rgba(0,234,255,0.5);
+            text-shadow: 0 0 6px #000;
+            user-select: none;
+            pointer-events: none;
+        }
+        #score-div { top: 12px; left: 12px; }
+        #lives-div { top: 12px; right: 12px; font-size: 22px; }
+    </style>
+</head>
+<body>
+    <div id="ui-container">
+        <div id="game-over" class="ui-panel" style="display:none;">
+            <h1>GAME OVER</h1>
+            <p id="final-score">Score: 0</p>
+            <p style="font-size:20px;">Press SPACE to restart</p>
+        </div>
+        <!-- Countdown panel -->
+        <div id="countdown" class="ui-panel" style="display:none;">
+            <h1 id="countdown-number">3</h1>
+            <p>Get ready</p>
+        </div>
+    </div>
 
-		<script src="../js/GPC/project.js"></script>
+    <div id="score-div" class="hud-pill"></div>
+    <div id="lives-div" class="hud-pill"></div>
+
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+
+    <script defer src="../js/GPC/neon_runner_reinvented.js"></script>
 
 	</body>
 </html>

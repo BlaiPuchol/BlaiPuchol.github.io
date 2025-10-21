@@ -142,7 +142,22 @@ function loadScene()
   // Replace equirectangular single-texture load with a cube env made from the same image
   const wallUrl = 'env/factory_square.jpg';
   const ceilingUrl = 'env/ceiling_square.jpg';
-  const cubeEnv = new THREE.CubeTextureLoader().load([wallUrl, wallUrl, ceilingUrl, wallUrl, wallUrl, wallUrl]);
+  const cubeEnv = new THREE.CubeTextureLoader().load([
+    wallUrl, 
+    wallUrl, 
+    ceilingUrl,
+    wallUrl, 
+    wallUrl, 
+    wallUrl
+  ],
+        function (texture) {
+            console.log('Cubemap cargado correctamente.');
+        }, 
+        undefined, 
+        function (error) {
+            console.error('Error al cargar el cubemap', error);
+        }
+  );
   cubeEnv.colorSpace = THREE.SRGBColorSpace;
   scene.background = cubeEnv;     // skybox-like background
   scene.environment = cubeEnv;    // reflections for PBR/Phong

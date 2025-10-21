@@ -9,7 +9,7 @@ const lateralSpeed = 12;
 const pathSegments = [];
 const segmentLength = 50;
 const basePathWidth = 10;
-const minPathWidth = 5;
+const minPathWidth = 4;
 // Jump responsiveness: buffer and coyote time (seconds)
 const JUMP_BUFFER_TIME = 0.12;
 const COYOTE_TIME = 0.12;
@@ -24,6 +24,10 @@ let particleSystems = [];
 let dirLight = null, shadowTarget = null;
 // Add a player-following spotlight to guarantee shadows right under the ball
 let spotLight = null;
+// Add: stats overlay
+let stats = null;
+// Prevent long continuous hidden-path runs by tracking last global gap end
+let lastGlobalGapEndZ = -Infinity;
 
 // controls
 let inputLeft = false;
@@ -51,44 +55,44 @@ let countdownRemaining = 0;
 let countdownCallback = null;
 // Track if a countdown is active to avoid auto-unpause at start
 let countdownActive = false;
+// cache: start title
+let titleDiv = null;
 
 // Difficulty tuning
 const shrinkStartScore = 150;
 const shrinkFullScore = 1200;
 const gapStartScore = 300;
-const gapFullScore = 1500;
+const gapFullScore = 3000;
 const maxGapProbability = 0.35;
 const obstaclePatternStartScore = 40;
 let lastSegmentWasGap = false;
 
-// Neon palette and helpers
-// Replace generic NEON_COLORS with explicit palette for other objects and fixed colors for ball/path
-const BALL_COLOR = 0x00ff6a; // neon green for the player (unique)
+// Neon palette 
+const BALL_COLOR = 0x10fe58; // neon green for the player (unique)
 const PATH_COLOR = 0x0b1026; // deep indigo for the path (unique)
 const PATH_EMISSIVE = 0x101a40;
 
 // Object palette: ranges of purple, blue, pink, gray and white (biased to vibrant colors)
 const OBJECT_COLORS = [
   // purples
-  0x8B26FF, 0x8B26FF, 0x965DD9, 0x7200FF, 0x9d4dff, 0xb26bff, 0x3C027A,
+  0x5100ff, 0x6a00ff, 0x7a1fff, 0x8a2be2, 0x9d4dff, 0xb266ff, 0xc17cff,
   // blues
   0x007bff, 0x1e90ff, 0x3399ff, 0x3aa0ff, 0x66aaff, 0x66ccff, 0x99ddff,
   // pinks
-  0xD800DB, 0xD250D4, 0x942394, 0xFF45FF, 0xff77ff, 0xff99cc,
-  // gray
+  0xff2bff, 0xff3eb5, 0xff5fa2, 0xff66cc, 0xff77ff, 0xff99cc,
+  // grays (reduced)
   0x999999, 0xbbbbbb,
-  // white
+  // whites (rare)
   0xffffff
 ];
 
 function createNeonMaterial(colorHex, intensity = 1.4) {
-  const effectiveEmissive = 0.2 + Math.min(intensity, 2.5) * 0.2; // caps around ~0.7
   return new THREE.MeshStandardMaterial({
     color: colorHex,
     emissive: new THREE.Color(colorHex),
-    emissiveIntensity: effectiveEmissive,
-    metalness: 0.25,
-    roughness: 0.5
+    emissiveIntensity: intensity,
+    metalness: 0.6,
+    roughness: 0.15
   });
 }
 
@@ -123,6 +127,27 @@ function init() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputEncoding = THREE.sRGBEncoding;
   document.body.appendChild(renderer.domElement);
+
+  // Auto-pause when leaving the window/tab or canvas
+  window.addEventListener('blur', ()=> pauseIfRunning());
+  document.addEventListener('visibilitychange', ()=> { if (document.hidden) pauseIfRunning(); });
+  renderer.domElement.addEventListener('mouseleave', ()=> pauseIfRunning());
+
+  // Add: FPS stats in bottom-right
+  if (typeof Stats !== 'undefined') {
+    stats = new Stats();
+    stats.showPanel(0); // FPS
+    const container = document.getElementById('container') || document.body;
+    container.appendChild(stats.domElement);
+    const s = stats.domElement.style;
+    s.position = 'fixed';
+    s.right = '0px';
+    s.bottom = '0px';
+    s.left = 'auto';
+    s.top = 'auto';
+    s.zIndex = '1000';
+    //s.pointerEvents = 'none';
+  }
 
   // Lights
   const hemi = new THREE.HemisphereLight(0x4a64ff, 0x080818, 0.45);
@@ -162,6 +187,7 @@ function init() {
   gameOverDiv = document.getElementById('game-over');
   countdownDiv = document.getElementById('countdown');
   countdownNum = document.getElementById('countdown-number');
+  titleDiv = document.getElementById('game-title');
   if (scoreDiv) scoreDiv.innerText = 'Score: 0';
   if (livesDiv) livesDiv.innerHTML = '🖤'.repeat(lives);
 
@@ -198,6 +224,7 @@ function init() {
   countdownActive = false;
   if (countdownDiv) countdownDiv.style.display = 'block';
   if (countdownNum) countdownNum.textContent = 'Press SPACE to start';
+  if (titleDiv) titleDiv.style.display = 'block';
 
   animate();
 }
@@ -205,7 +232,7 @@ function init() {
 // --- Player & path ---
 function createPlayer(){
   const g = new THREE.SphereGeometry(0.5, 48, 48);
-  const m = createNeonMaterial(BALL_COLOR, 2.2);
+  const m = createNeonMaterial(BALL_COLOR, 1.0);
   player = new THREE.Mesh(g,m);
   player.position.set(0,0.5,0);
   player.castShadow = true;
@@ -243,8 +270,8 @@ function createPathSegment(zPos){
   segment.userData.width = basePathWidth;
   segment.userData.isGap = false;
   // track small gap zones and their visual meshes
-  segment.userData.gapZones = [];  
-  segment.userData.gapMeshes = [];  
+  segment.userData.gapZones = [];   // [{ z0, z1 }]
+  segment.userData.gapMeshes = [];  // [THREE.Mesh]
   scene.add(segment);
   pathSegments.push(segment);
   worldObjects.push(segment);
@@ -270,11 +297,71 @@ function configureSegmentDifficulty(segment){
   segment.userData.gapZones = [];
   segment.userData.gapMeshes = [];
 
-  // Disable small gaps entirely to ensure the path never disappears
-  // (previously: probabilistic creation of gap strips)
+  // decide on small horizontal gaps across width , never hide whole segment
   let createdGaps = false;
+  if (!lastSegmentWasGap && Math.random() < gapProbability()){
+    const usableStart = segment.position.z - segmentLength/2 + 6;
+    const usableEnd = segment.position.z + segmentLength/2 - 6;
 
-  // keep segment always visible and mark no gaps
+    // Limit total hidden coverage per segment to avoid "no path" feel
+    const maxCoverage = segmentLength * 0.45;
+    let covered = 0;
+
+    const gapCount = Math.random() < 0.55 ? 1 : 2;
+    const taken = [];
+    const minSeparation = 5.0; // keep distance from previous global gap end
+
+    for (let i=0;i<gapCount;i++){
+      if (covered >= maxCoverage) break;
+
+      const gapLen = 3 + Math.random()*3; // 3..6 units long
+      // initial candidate
+      let z0 = THREE.MathUtils.clamp(
+        usableStart + Math.random() * (usableEnd - usableStart - gapLen),
+        usableStart,
+        usableEnd - gapLen
+      );
+      // avoid chaining with the last global gap (keep at least minSeparation)
+      if (z0 < lastGlobalGapEndZ + minSeparation) {
+        z0 = lastGlobalGapEndZ + minSeparation;
+      }
+      // still must fit
+      if (z0 > usableEnd - gapLen) continue;
+
+      const z1 = z0 + gapLen;
+
+      // avoid overlaps within this segment (keep 1u buffer)
+      if (taken.some(r => !(z1 < r.z0-1 || z0 > r.z1+1))) continue;
+
+      // ensure coverage budget
+      const allowedLen = Math.min(gapLen, Math.max(0, maxCoverage - covered));
+      if (allowedLen < 0.5) continue; // too small to be meaningful
+
+      // commit gap
+      taken.push({z0, z1: z0 + allowedLen});
+      segment.userData.gapZones.push({ z0, z1: z0 + allowedLen });
+
+      const strip = new THREE.Mesh(
+        new THREE.BoxGeometry(pathWidth + 0.6, 0.05, allowedLen + 0.1),
+        new THREE.MeshBasicMaterial({ color: 0x000000 })
+      );
+      strip.position.set(0, 0.01, z0 + allowedLen/2);
+      strip.name = 'gap_strip';
+      strip.castShadow = false;
+      strip.receiveShadow = false;
+      // render above path to avoid z-fighting artifacts
+      strip.renderOrder = 1;
+
+      scene.add(strip);
+      worldObjects.push(strip);
+      segment.userData.gapMeshes.push(strip);
+
+      covered += allowedLen;
+      lastGlobalGapEndZ = z0 + allowedLen;
+      createdGaps = true;
+    }
+  }
+  // keep segment always visible and mark that we created small gaps (no full disappear)
   segment.visible = true;
   segment.userData.isGap = false;
   lastSegmentWasGap = createdGaps;
@@ -288,13 +375,12 @@ function configureSegmentDifficulty(segment){
 }
 
 function currentPathWidth(){ if (score < shrinkStartScore) return basePathWidth; const t = Math.min((score - shrinkStartScore)/(shrinkFullScore - shrinkStartScore),1); return basePathWidth - t*(basePathWidth-minPathWidth); }
-function gapProbability(){ 
-  // Force no gaps to be created anywhere
-  return 0; 
-}
+function gapProbability(){ if (score < gapStartScore) return 0; const t = Math.min((score - gapStartScore)/(gapFullScore-gapStartScore),1); return t*maxGapProbability; }
 
 // --- Spawning & prefabs () ---
 function spawnDynamicObjects(segment){
+  // remove full-gap behavior; we now create only small gap strips
+  // if (segment.userData.isGap){ spawnPlatformsAcrossGap(segment); return; }
 
   // increase prefab spawn chance a bit
   const prefabChance = clamp((score/200), 0.2, 0.75);
@@ -308,9 +394,13 @@ function spawnDynamicObjects(segment){
   spawnObject(segment.position.z - segmentLength*0.25);
   spawnObject(segment.position.z + segmentLength*0.25);
   if (Math.random() < 0.85) spawnObject(segment.position.z);
+
+  // Add: extra platform-focused spawns to increase simultaneous platforms
+  if (Math.random() < 0.6) spawnObject(segment.position.z - segmentLength*0.35, true);
+  if (Math.random() < 0.6) spawnObject(segment.position.z + segmentLength*0.35, true);
 }
 
-// spawn platform clusters across gap 
+// spawn platform clusters across gap (uses jump-based spacing)
 function spawnPlatformsAcrossGap(segment){
   const usableLength = segmentLength*0.95;
   const startZ = segment.position.z - usableLength/2;
@@ -341,37 +431,130 @@ function spawnPlatformsAcrossGap(segment){
 function spawnObject(zPos, forcedPlatform=false, patternObj=null){
   const width = pathWidth;
   let x = patternObj && typeof patternObj.x !== 'undefined' ? patternObj.x : (Math.random()*2-1)*(width/2 - 0.9);
-  let type = patternObj && patternObj.type ? patternObj.type : (forcedPlatform ? 'platform' : (Math.random()<0.65 ? 'platform':'obstacle'));
+  // Increase platform probability so more platforms appear overall
+  let type = patternObj && patternObj.type ? patternObj.type : (forcedPlatform ? 'platform' : (Math.random()<0.75 ? 'platform':'obstacle'));
   let obj = null;
 
   if (type === 'platform'){
-    const h = patternObj && patternObj.y ? patternObj.y : 1 + Math.random()*3.0;
+    // Lower default platform height so they appear nearer the floor
+    const minY = 0.45, maxY = 2.2;
+    const h = patternObj && patternObj.y ? patternObj.y : (minY + Math.random()*(maxY - minY));
     const size = patternObj && patternObj.size ? patternObj.size : { w: 2, h:0.45, d: 2 };
+
+    // Sometimes spawn multiple platforms at once in an equidistant row
+    const spawnRow = !patternObj && Math.random() < 0.6;
+    if (spawnRow){
+      const count = 2 + Math.floor(Math.random()*2); // 2 or 3
+      const halfW = pathWidth/2;
+      const margin = 0.6;
+      const leftEdge = -halfW + margin + size.w/2;
+      const rightEdge = halfW - margin - size.w/2;
+      const usable = Math.max(0, rightEdge - leftEdge);
+      const step = count > 1 ? (usable / (count - 1)) : 0;
+
+      for (let i=0;i<count;i++){
+        const geom = new THREE.BoxGeometry(size.w, size.h, size.d);
+        const mat = createNeonMaterial(randChoice(OBJECT_COLORS), 1.8);
+        const p = new THREE.Mesh(geom, mat);
+        const px = leftEdge + i * step;
+        p.position.set(px, h, zPos);
+        p.name = 'platform';
+        p.castShadow = true; p.receiveShadow = true;
+
+        // occasional gentle vertical movement
+        if (Math.random()<0.25){
+          p.userData.isMoving = true;
+          p.userData.movementType = 'vertical';
+          p.userData.initialY = p.position.y;
+          p.userData.speed = 1.2 + Math.random()*2.0;
+          p.userData.range = 0.9 + Math.random()*1.8;
+        }
+        if (Math.random() < 0.15){
+          makePlatformCrumble(p);
+        }
+
+        scene.add(p);
+        worldObjects.push(p);
+      }
+      // row spawned; skip single-object flow
+      return;
+    }
+
+    // Single platform (lower height baseline)
     const geom = new THREE.BoxGeometry(size.w, size.h, size.d);
     const mat = createNeonMaterial(randChoice(OBJECT_COLORS), 1.8);
     obj = new THREE.Mesh(geom, mat);
     obj.position.set(x, h, zPos + (patternObj && patternObj.z?patternObj.z:0));
     obj.name = 'platform';
-    // floating movement for 
     if (Math.random()<0.25){
       obj.userData.isMoving = true;
       obj.userData.movementType = 'vertical';
       obj.userData.initialY = obj.position.y;
-      obj.userData.speed = 1.2 + Math.random()*2.0; // was 0.8..2.4
-      obj.userData.range = 0.9 + Math.random()*1.8; // slightly larger motion
+      obj.userData.speed = 1.2 + Math.random()*2.0;
+      obj.userData.range = 0.9 + Math.random()*1.8;
     }
-    // sometimes make it crumble
     if (Math.random() < 0.15){
       makePlatformCrumble(obj);
     }
   } else {
     // obstacle - cube or small pillar
     if (Math.random() < 0.45){
-      const geom = new THREE.CylinderGeometry(0.5,0.5,1.2,12);
-      const mat = createNeonMaterial(randChoice(OBJECT_COLORS), 2.0);
-      obj = new THREE.Mesh(geom, mat);
-      obj.position.set(x, 0.6, zPos);
-      obj.name = 'obstacle';
+      // Pillars: sometimes spawn a row (2-3) equidistant on X, with staggered movement start
+      const spawnRow = Math.random() < 0.7;
+      if (spawnRow){
+        const count = 2 + Math.floor(Math.random()*2); // 2 or 3
+        const geom = new THREE.CylinderGeometry(0.5, 0.5, 1.2, 12);
+        const halfW = pathWidth / 2;
+        const safeMargin = 0.6;
+        const radius = 0.5;
+        const leftEdge = -halfW + safeMargin + radius;
+        const rightEdge = halfW - safeMargin - radius;
+        const usable = Math.max(0, rightEdge - leftEdge);
+        const step = count > 1 ? (usable / (count - 1)) : 0;
+
+        const rowMoves = Math.random() < 0.75;
+        const rowMoveType = Math.random() < 0.5 ? 'horizontal' : 'vertical';
+        const baseSpeed = 1.2 + Math.random()*0.8;
+        const staggerInterval = 0.22 + Math.random()*0.18;
+
+        for (let i = 0; i < count; i++){
+          const mat = createNeonMaterial(randChoice(OBJECT_COLORS), 2.0);
+          const pillar = new THREE.Mesh(geom, mat);
+          const px = leftEdge + i * step;
+          pillar.position.set(px, 0.6, zPos);
+          pillar.name = 'obstacle';
+          pillar.castShadow = true;
+          pillar.receiveShadow = true;
+
+          if (rowMoves){
+            pillar.userData.isMoving = true;
+            pillar.userData.movementType = rowMoveType;
+            pillar.userData.initialX = pillar.position.x;
+            pillar.userData.initialY = pillar.position.y;
+            pillar.userData.speed = baseSpeed * (0.95 + Math.random()*0.1);
+            if (rowMoveType === 'horizontal'){
+              // full-width sweep from current position
+              pillar.userData.range = (halfW - safeMargin) + Math.abs(pillar.userData.initialX);
+            } else {
+              pillar.userData.range = 0.6 + Math.random()*1.8;
+            }
+            pillar.userData.staggerStartTime = (typeof clock !== 'undefined' && clock) ? (clock.elapsedTime + i * staggerInterval) : (i * staggerInterval);
+            pillar.userData.phase = 0;
+          }
+
+          scene.add(pillar);
+          worldObjects.push(pillar);
+        }
+        // row spawned; skip single-object flow
+        return;
+      } else {
+        // Single pillar (original behavior)
+        const geom = new THREE.CylinderGeometry(0.5,0.5,1.2,12);
+        const mat = createNeonMaterial(randChoice(OBJECT_COLORS), 2.0);
+        obj = new THREE.Mesh(geom, mat);
+        obj.position.set(x, 0.6, zPos);
+        obj.name = 'obstacle';
+      }
     } else {
       // Create a row of cubes that fills the path width without exceeding it
       const cubeW = 1.2;
@@ -384,7 +567,6 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
       const totalWidth = (count * cubeW) + ((count - 1) * spacing);
       const startX = -totalWidth/2;
 
-      // Randomly decide whether this row will move and which way 
       const rowMoves = Math.random() < 0.8;
       const rowMoveType = Math.random() < 0.5 ? 'horizontal' : 'vertical';
       const baseSpeed = 1.2 + Math.random()*0.8;
@@ -395,7 +577,6 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
         const geom = new THREE.BoxGeometry(cubeW, cubeH, 1.2);
         const mat = createNeonMaterial(randChoice(OBJECT_COLORS), 2.0);
         const cube = new THREE.Mesh(geom, mat);
-        // position on path and clamp inside margins
         const clampedX = THREE.MathUtils.clamp(cx, -halfW + safeMargin + cubeW/2, halfW - safeMargin - cubeW/2);
         cube.position.set(clampedX, cubeH/2, zPos);
         cube.name = 'obstacle';
@@ -408,18 +589,13 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
           cube.userData.initialX = cube.position.x;
           cube.userData.initialY = cube.position.y;
           cube.userData.speed = baseSpeed * (0.95 + Math.random()*0.1);
-          // safe horizontal range based on proximity to edges; vertical uses a gentle bob
           if (rowMoveType === 'horizontal'){
-            const leftEdge = -halfW + safeMargin + cubeW/2;
-            const rightEdge = halfW - safeMargin - cubeW/2;
-            const distLeft = cube.position.x - leftEdge;
-            const distRight = rightEdge - cube.position.x;
-            const maxRange = Math.max(0.3, Math.min(distLeft, distRight, 1.5));
-            cube.userData.range = maxRange;
+            // Sweep full width from current position
+            const margin = 0.6;
+            cube.userData.range = (halfW - margin) + Math.abs(cube.userData.initialX);
           } else {
             cube.userData.range = 0.6 + Math.random()*1.8;
           }
-          // sequential start: each cube starts after a small per-index delay
           cube.userData.staggerStartTime = (typeof clock !== 'undefined' && clock) ? (clock.elapsedTime + i * staggerInterval) : (i * staggerInterval);
           cube.userData.phase = 0;
         }
@@ -427,7 +603,6 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
         scene.add(cube);
         worldObjects.push(cube);
       }
-      // Already spawned the row; do not proceed with single-object flow
       return;
     }
     // moving obstacles often, faster and a bit larger range
@@ -437,7 +612,14 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
       obj.userData.initialX = obj.position.x;
       obj.userData.initialY = obj.position.y;
       obj.userData.speed = 1.8 + Math.random()*2.2;
-      obj.userData.range = 0.0 + Math.random()*2.8;
+      // Allow full-width sweep for horizontals; keep vertical random
+      if (obj.userData.movementType === 'horizontal'){
+        const halfW = pathWidth/2;
+        const margin = 0.6;
+        obj.userData.range = (halfW - margin) + Math.abs(obj.userData.initialX);
+      } else {
+        obj.userData.range = 0.0 + Math.random()*2.8;
+      }
     }
   }
 
@@ -470,14 +652,15 @@ function spawnNeonGates(centerZ){
     right.castShadow = true; right.receiveShadow = true; right.name = 'gate';
     scene.add(left); scene.add(right);
     worldObjects.push(left); worldObjects.push(right);
+    // top beam (higher, purely visual)
     const topBeam = new THREE.Mesh(
       new THREE.BoxGeometry(pathWidth - pillarW*2 - 0.6, 0.2, 0.4),
       createNeonMaterial(randChoice(OBJECT_COLORS), 1.8)
     );
-    if (steps % 2 === 0){
-        topBeam.position.set(0, pillarH + 0.3, z);
+    if (i % 2 === 0) {
+      topBeam.position.set(0, pillarH + 0.3, z);
     } else {
-        topBeam.position.set(0, 0.3, z);
+      topBeam.position.set(0, 0.3, z);
     }
     topBeam.castShadow = true; topBeam.receiveShadow = true; topBeam.name = 'gate';
     scene.add(topBeam); worldObjects.push(topBeam);
@@ -491,16 +674,17 @@ function spawnSweeperPair(centerZ){
   const barGeom = new THREE.BoxGeometry(1.6, 0.2, len);
   const mat = createNeonMaterial(randChoice(OBJECT_COLORS), 2.5);
 
+  const margin = 0.6;
   const makeSweeper = (side)=> {
     const bar = new THREE.Mesh(barGeom, mat.clone());
-    const range = Math.max(0.8, pathWidth * 0.25);
-    bar.position.set(side * (halfW - 1.2), 0.9, centerZ);
+    // Start at center and sweep full width
+    bar.position.set(0, 0.9, centerZ);
     bar.castShadow = true; bar.receiveShadow = true; bar.name = 'sweeper';
     bar.userData.isMoving = true;
     bar.userData.movementType = 'horizontal';
-    bar.userData.initialX = bar.position.x;
-    bar.userData.range = range * 0.7;
-    bar.userData.speed = 1.4 + Math.random()*2.0; // faster
+    bar.userData.initialX = 0;
+    bar.userData.range = halfW - margin;       // traverse whole width
+    bar.userData.speed = 1.4 + Math.random()*2.0;
     bar.userData.phase = side > 0 ? 0 : Math.PI; // alternate
     scene.add(bar); worldObjects.push(bar);
   };
@@ -559,9 +743,10 @@ function spawnStairs(centerZ){
 function makePlatformCrumble(platform){
   platform.userData.crumble = true;
   platform.userData.crumbleTriggered = false;
-  // reduce crumble glow so it doesn't blast brightness
-  platform.material.emissiveIntensity = 0.8;
+  // small tint
+  platform.material.emissiveIntensity = 1.6;
 }
+
 
 // 6) Wall Slalom: alternating walls creating narrow S path
 function spawnWallSlalom(centerZ){
@@ -782,17 +967,35 @@ function respawnPlayer(){
   if (livesDiv) livesDiv.innerHTML = '🖤'.repeat(Math.max(0, lives));
 }
 
+// Helper: pause without countdown (resume with SPACE)
+function pauseIfRunning(){
+  if (gameOver) return;
+  if (!gameStarted) return;                 // keep the start overlay as-is
+  if (countdownActive) return;              // don't interrupt respawn/initial countdown
+  if (paused) return;                       // already paused
+
+  paused = true;
+  if (countdownDiv) countdownDiv.style.display = 'block';
+  if (countdownNum) countdownNum.textContent = 'PAUSED - Press SPACE to resume';
+}
+
 // --- Animate loop ---
 function animate(){
   if (gameOver) return;
   scene.updateMatrixWorld(true);
   requestAnimationFrame(animate);
+
+  // begin FPS measurement
+  if (stats) stats.begin();
+
   const delta = clock.getDelta();
 
   // If paused, only update countdown and render frame (no world/score updates)
   if (paused){
     updateCountdown(delta);
     renderer.render(scene, camera);
+    // end FPS measurement before returning early
+    if (stats) stats.end();
     return;
   }
 
@@ -947,11 +1150,19 @@ function animate(){
   gameSpeed += delta * (0.06 + Math.min(score/5000,0.2));
 
   renderer.render(scene, camera);
+
+  // end FPS measurement
+  if (stats) stats.end();
 }
 
 // Helper: start game countdown on Space from initial state
 function startGameCountdown(){
-  if (gameStarted) return;
+  // Do nothing if the game already started or a countdown is in progress
+  if (gameStarted || countdownActive) return;
+
+  // Hide the big title when starting
+  if (titleDiv) titleDiv.style.display = 'none';
+
   // Ensure nearby area is clear just in case
   for (let i=worldObjects.length-1;i>=0;i--){
     const o = worldObjects[i];
@@ -973,15 +1184,31 @@ function setupControls(){
     if (e.code === 'Space'){
       if (gameOver){ restart(); return; }
       if (!gameStarted){
-        startGameCountdown();
+        if (!countdownActive) startGameCountdown();
         e.preventDefault();
         return;
       }
-      if (!paused){
-        // Fill jump buffer; jump will trigger as soon as allowed
-        jumpBuffer = JUMP_BUFFER_TIME;
+      // If paused (manual/auto), resume with Space (unless a countdown is running)
+      if (paused){
+        if (!countdownActive){
+          paused = false;
+          if (countdownDiv) countdownDiv.style.display = 'none';
+        }
+        e.preventDefault();
+        return;
+      }
+      // Normal gameplay: buffer jump
+      jumpBuffer = JUMP_BUFFER_TIME;
+      e.preventDefault();
+      return;
+    }
+    // P key: pause game (resume with Space)
+    if (e.code === 'KeyP'){
+      if (gameStarted && !gameOver && !countdownActive){
+        pauseIfRunning();
       }
       e.preventDefault();
+      return;
     }
     // Arrow keys: set input axis
     if (e.code === 'ArrowLeft'){ inputLeft = true; e.preventDefault(); }
@@ -1038,6 +1265,9 @@ function restart(){
   if (gameOverDiv) { gameOverDiv.style.display = 'none'; }
   gameOver = false;
 
+  // Reset global gap tracker on restart to avoid carrying over spacing state
+  lastGlobalGapEndZ = -Infinity;
+
   for (let i=0;i<12;i++){
     const s = createPathSegment(-i*segmentLength);
     configureSegmentDifficulty(s);
@@ -1065,6 +1295,7 @@ function restart(){
   countdownActive = false;
   if (countdownDiv) countdownDiv.style.display = 'block';
   if (countdownNum) countdownNum.textContent = 'Press SPACE to start';
+  if (titleDiv) titleDiv.style.display = 'block';
 
   animate();
 }

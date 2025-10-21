@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <title>Neon Runner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         #ui-container {
@@ -10,7 +13,7 @@
             top: 0; left: 0;
             width: 100%; height: 100%;
             display: flex; justify-content: center; align-items: center;
-            color: white; font-family: Arial, sans-serif; text-align: center;
+            color: white; font-family: "Bungee", sans-serif; text-align: center;
             pointer-events: none;
         }
         .ui-panel {
@@ -29,7 +32,7 @@
         .hud-pill {
             position: absolute;
             color: #fff;
-            font: 20px Arial;
+            font: 20px "Bungee";
             padding: 8px 14px;
             border-radius: 999px;
             background: linear-gradient(135deg, #00eaff, #9d4dff);
@@ -40,10 +43,34 @@
         }
         #score-div { top: 12px; left: 12px; }
         #lives-div { top: 12px; right: 12px; font-size: 22px; }
+
+        /* Neon title */
+        .neon-title {
+            position: absolute;
+            top: 1%;
+            width: 100%;
+            text-align: center;
+            font-family: "Bungee", sans-serif;
+            font-size: clamp(40px, 9vw, 140px);
+            letter-spacing: 0.08em;
+            color: #fff;
+            text-shadow:
+                0 0 6px #00eaff,
+                0 0 14px #00eaff,
+                0 0 28px #00eaff,
+                0 0 48px #9d4dff,
+                0 0 80px #9d4dff;
+            filter: drop-shadow(0 0 8px rgba(0,234,255,0.6));
+            pointer-events: none;
+            user-select: none;
+        }
     </style>
 </head>
 <body>
     <div id="ui-container">
+        <!-- Neon title shown on start screen -->
+        <h1 id="game-title" class="neon-title">NEON RUNNER</h1>
+
         <div id="game-over" class="ui-panel" style="display:none;">
             <h1>GAME OVER</h1>
             <p id="final-score">Score: 0</p>
@@ -60,12 +87,13 @@
     <div id="lives-div" class="hud-pill"></div>
 
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+	<script src="../lib/stats.min.js"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
-    <script defer src="../js/GPC/neon_runner_reinvented.js"></script>
+    <script defer src="../js/GPC/project.js"></script>
 
 	</body>
 </html>

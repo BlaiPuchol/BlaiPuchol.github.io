@@ -9,7 +9,7 @@ const lateralSpeed = 12;
 const pathSegments = [];
 const segmentLength = 50;
 const basePathWidth = 10;
-const minPathWidth = 4;
+const minPathWidth = 5;
 // Jump responsiveness: buffer and coyote time (seconds)
 const JUMP_BUFFER_TIME = 0.12;
 const COYOTE_TIME = 0.12;
@@ -70,24 +70,25 @@ const PATH_EMISSIVE = 0x101a40;
 // Object palette: ranges of purple, blue, pink, gray and white (biased to vibrant colors)
 const OBJECT_COLORS = [
   // purples
-  0x5100ff, 0x6a00ff, 0x7a1fff, 0x8a2be2, 0x9d4dff, 0xb266ff, 0xc17cff,
+  0x8B26FF, 0x8B26FF, 0x965DD9, 0x7200FF, 0x9d4dff, 0xb26bff, 0x3C027A,
   // blues
   0x007bff, 0x1e90ff, 0x3399ff, 0x3aa0ff, 0x66aaff, 0x66ccff, 0x99ddff,
   // pinks
-  0xff2bff, 0xff3eb5, 0xff5fa2, 0xff66cc, 0xff77ff, 0xff99cc,
-  // grays (reduced)
+  0xD800DB, 0xD250D4, 0x942394, 0xFF45FF, 0xff77ff, 0xff99cc,
+  // gray
   0x999999, 0xbbbbbb,
-  // whites (rare)
+  // white
   0xffffff
 ];
 
 function createNeonMaterial(colorHex, intensity = 1.4) {
+  const effectiveEmissive = 0.2 + Math.min(intensity, 2.5) * 0.2; // caps around ~0.7
   return new THREE.MeshStandardMaterial({
     color: colorHex,
     emissive: new THREE.Color(colorHex),
-    emissiveIntensity: intensity,
-    metalness: 0.6,
-    roughness: 0.15
+    emissiveIntensity: effectiveEmissive,
+    metalness: 0.25,
+    roughness: 0.5
   });
 }
 
@@ -242,8 +243,8 @@ function createPathSegment(zPos){
   segment.userData.width = basePathWidth;
   segment.userData.isGap = false;
   // track small gap zones and their visual meshes
-  segment.userData.gapZones = [];   // [{ z0, z1 }]
-  segment.userData.gapMeshes = [];  // [THREE.Mesh]
+  segment.userData.gapZones = [];  
+  segment.userData.gapMeshes = [];  
   scene.add(segment);
   pathSegments.push(segment);
   worldObjects.push(segment);
@@ -269,37 +270,11 @@ function configureSegmentDifficulty(segment){
   segment.userData.gapZones = [];
   segment.userData.gapMeshes = [];
 
-  // decide on small horizontal gaps across width , never hide whole segment
+  // Disable small gaps entirely to ensure the path never disappears
+  // (previously: probabilistic creation of gap strips)
   let createdGaps = false;
-  if (!lastSegmentWasGap && Math.random() < gapProbability()){
-    const usableStart = segment.position.z - segmentLength/2 + 6;
-    const usableEnd = segment.position.z + segmentLength/2 - 6;
-    const gapCount = Math.random() < 0.55 ? 1 : 2;
-    const taken = [];
-    for (let i=0;i<gapCount;i++){
-      const gapLen = 3 + Math.random()*3; // 3..6 units long
-      const z0 = THREE.MathUtils.clamp(usableStart + Math.random() * (usableEnd - usableStart - gapLen), usableStart, usableEnd - gapLen);
-      const z1 = z0 + gapLen;
-      // avoid overlaps if two gaps
-      if (taken.some(r => !(z1 < r.z0-1 || z0 > r.z1+1))) continue;
-      taken.push({z0,z1});
-      segment.userData.gapZones.push({ z0, z1 });
-      // visual "void" strip to hide the path
-      const strip = new THREE.Mesh(
-        new THREE.BoxGeometry(pathWidth + 0.6, 0.05, gapLen + 0.1),
-        new THREE.MeshBasicMaterial({ color: 0x03030a }) // match background
-      );
-      strip.position.set(0, 0.01, (z0+z1)/2);
-      strip.name = 'gap_strip';
-      strip.castShadow = false;
-      strip.receiveShadow = false;
-      scene.add(strip);
-      worldObjects.push(strip);
-      segment.userData.gapMeshes.push(strip);
-      createdGaps = true;
-    }
-  }
-  // keep segment always visible and mark that we created small gaps (no full disappear)
+
+  // keep segment always visible and mark no gaps
   segment.visible = true;
   segment.userData.isGap = false;
   lastSegmentWasGap = createdGaps;
@@ -313,12 +288,13 @@ function configureSegmentDifficulty(segment){
 }
 
 function currentPathWidth(){ if (score < shrinkStartScore) return basePathWidth; const t = Math.min((score - shrinkStartScore)/(shrinkFullScore - shrinkStartScore),1); return basePathWidth - t*(basePathWidth-minPathWidth); }
-function gapProbability(){ if (score < gapStartScore) return 0; const t = Math.min((score - gapStartScore)/(gapFullScore-gapStartScore),1); return t*maxGapProbability; }
+function gapProbability(){ 
+  // Force no gaps to be created anywhere
+  return 0; 
+}
 
 // --- Spawning & prefabs () ---
 function spawnDynamicObjects(segment){
-  // remove full-gap behavior; we now create only small gap strips
-  // if (segment.userData.isGap){ spawnPlatformsAcrossGap(segment); return; }
 
   // increase prefab spawn chance a bit
   const prefabChance = clamp((score/200), 0.2, 0.75);
@@ -334,7 +310,7 @@ function spawnDynamicObjects(segment){
   if (Math.random() < 0.85) spawnObject(segment.position.z);
 }
 
-// spawn platform clusters across gap (uses jump-based spacing)
+// spawn platform clusters across gap 
 function spawnPlatformsAcrossGap(segment){
   const usableLength = segmentLength*0.95;
   const startZ = segment.position.z - usableLength/2;
@@ -494,12 +470,15 @@ function spawnNeonGates(centerZ){
     right.castShadow = true; right.receiveShadow = true; right.name = 'gate';
     scene.add(left); scene.add(right);
     worldObjects.push(left); worldObjects.push(right);
-    // top beam (higher, purely visual)
     const topBeam = new THREE.Mesh(
       new THREE.BoxGeometry(pathWidth - pillarW*2 - 0.6, 0.2, 0.4),
       createNeonMaterial(randChoice(OBJECT_COLORS), 1.8)
     );
-    topBeam.position.set(0, pillarH + 0.3, z);
+    if (steps % 2 === 0){
+        topBeam.position.set(0, pillarH + 0.3, z);
+    } else {
+        topBeam.position.set(0, 0.3, z);
+    }
     topBeam.castShadow = true; topBeam.receiveShadow = true; topBeam.name = 'gate';
     scene.add(topBeam); worldObjects.push(topBeam);
   }
@@ -580,10 +559,9 @@ function spawnStairs(centerZ){
 function makePlatformCrumble(platform){
   platform.userData.crumble = true;
   platform.userData.crumbleTriggered = false;
-  // small tint
-  platform.material.emissiveIntensity = 1.6;
+  // reduce crumble glow so it doesn't blast brightness
+  platform.material.emissiveIntensity = 0.8;
 }
-
 
 // 6) Wall Slalom: alternating walls creating narrow S path
 function spawnWallSlalom(centerZ){

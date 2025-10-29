@@ -99,9 +99,8 @@ function createNeonMaterial(colorHex, intensity = 1.4) {
 function randChoice(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
 function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
 
-// New prefab sets
+// --- Prefab  ---
 const prefabs = [
-  // Replace the hard Laser Storm with easier gates, and add two new prefabs
   { name: "Neon Gates", spawn: spawnNeonGates },
   { name: "Sweeper Pair", spawn: spawnSweeperPair },
   { name: "Pulsing Rings", spawn: spawnPulsingRings },
@@ -133,7 +132,7 @@ function init() {
   document.addEventListener('visibilitychange', ()=> { if (document.hidden) pauseIfRunning(); });
   renderer.domElement.addEventListener('mouseleave', ()=> pauseIfRunning());
 
-  // Add: FPS stats in bottom-right
+  
   if (typeof Stats !== 'undefined') {
     stats = new Stats();
     stats.showPanel(0); // FPS
@@ -146,15 +145,13 @@ function init() {
     s.left = 'auto';
     s.top = 'auto';
     s.zIndex = '1000';
-    //s.pointerEvents = 'none';
   }
 
   // Lights
   const hemi = new THREE.HemisphereLight(0x4a64ff, 0x080818, 0.45);
   scene.add(hemi);
-  // Directional light: follows player and points slightly ahead
   dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
-  dirLight.position.set(0, 28, 8); // initial; updated per-frame
+  dirLight.position.set(0, 28, 8);
   dirLight.castShadow = true;
   dirLight.shadow.mapSize.set(2048, 2048);
   dirLight.shadow.camera.left = -20;
@@ -166,12 +163,12 @@ function init() {
   dirLight.shadow.bias = -0.0006;
   dirLight.shadow.normalBias = 0.025;
   shadowTarget = new THREE.Object3D();
-  shadowTarget.position.set(0, 0, -6); // aim slightly ahead along the lane
+  shadowTarget.position.set(0, 0, -6); 
   dirLight.target = shadowTarget;
   scene.add(shadowTarget);
   scene.add(dirLight);
 
-  // Spotlight: directly above player, tight cone for strong nearby shadows
+  // Spotlight
   spotLight = new THREE.SpotLight(0xffffff, 0.9, 70, Math.PI/4, 0.35, 1.0);
   spotLight.position.set(0, 14, 4);
   spotLight.castShadow = true;
@@ -181,7 +178,7 @@ function init() {
   scene.add(spotLight);
   scene.add(spotLight.target);
 
-  // UI: use elements defined in HTML
+  // UI
   scoreDiv = document.getElementById('score-div');
   livesDiv = document.getElementById('lives-div');
   gameOverDiv = document.getElementById('game-over');
@@ -219,7 +216,7 @@ function init() {
   // initial update to avoid fall-through
   scene.updateMatrixWorld(true);
 
-  // Start paused; show hint and wait for Space to start countdown
+  // Start paused
   paused = true;
   countdownActive = false;
   if (countdownDiv) countdownDiv.style.display = 'block';
@@ -260,7 +257,6 @@ function createPathSegment(zPos){
     emissiveIntensity: 0.35,
     side: THREE.DoubleSide
   });
-  // Ensure stable receiving under the player
   material.shadowSide = THREE.FrontSide;
   const segment = new THREE.Mesh(geometry, material);
   segment.rotation.x = -Math.PI/2;
@@ -270,8 +266,8 @@ function createPathSegment(zPos){
   segment.userData.width = basePathWidth;
   segment.userData.isGap = false;
   // track small gap zones and their visual meshes
-  segment.userData.gapZones = [];   // [{ z0, z1 }]
-  segment.userData.gapMeshes = [];  // [THREE.Mesh]
+  segment.userData.gapZones = [];  
+  segment.userData.gapMeshes = [];  
   scene.add(segment);
   pathSegments.push(segment);
   worldObjects.push(segment);
@@ -280,13 +276,13 @@ function createPathSegment(zPos){
 
 function configureSegmentDifficulty(segment){
   currentDifficultyPathWidth = currentPathWidth();
-  // Use global path width for all X-related computations
+  // Use global path 
   pathWidth = currentPathWidth();
-  currentDifficultyPathWidth = pathWidth; // keep old var in sync for safety
+  currentDifficultyPathWidth = pathWidth; 
   segment.userData.width = pathWidth;
   segment.scale.x = pathWidth / basePathWidth;
 
-  // clear previous small gaps
+
   if (segment.userData.gapMeshes && segment.userData.gapMeshes.length){
     for (const gm of segment.userData.gapMeshes){
       try { scene.remove(gm); } catch(e){}
@@ -297,45 +293,42 @@ function configureSegmentDifficulty(segment){
   segment.userData.gapZones = [];
   segment.userData.gapMeshes = [];
 
-  // decide on small horizontal gaps across width , never hide whole segment
+  // decide on small horizontal gaps across width
   let createdGaps = false;
   if (!lastSegmentWasGap && Math.random() < gapProbability()){
     const usableStart = segment.position.z - segmentLength/2 + 6;
     const usableEnd = segment.position.z + segmentLength/2 - 6;
 
-    // Limit total hidden coverage per segment to avoid "no path" feel
     const maxCoverage = segmentLength * 0.45;
     let covered = 0;
 
     const gapCount = Math.random() < 0.55 ? 1 : 2;
     const taken = [];
-    const minSeparation = 5.0; // keep distance from previous global gap end
+    const minSeparation = 5.0; 
 
     for (let i=0;i<gapCount;i++){
       if (covered >= maxCoverage) break;
 
-      const gapLen = 3 + Math.random()*3; // 3..6 units long
-      // initial candidate
+      const gapLen = 3 + Math.random()*3; 
       let z0 = THREE.MathUtils.clamp(
         usableStart + Math.random() * (usableEnd - usableStart - gapLen),
         usableStart,
         usableEnd - gapLen
       );
-      // avoid chaining with the last global gap (keep at least minSeparation)
+      // avoid chaining with the last global gap 
       if (z0 < lastGlobalGapEndZ + minSeparation) {
         z0 = lastGlobalGapEndZ + minSeparation;
       }
-      // still must fit
       if (z0 > usableEnd - gapLen) continue;
 
       const z1 = z0 + gapLen;
 
-      // avoid overlaps within this segment (keep 1u buffer)
+      // avoid overlaps 
       if (taken.some(r => !(z1 < r.z0-1 || z0 > r.z1+1))) continue;
 
       // ensure coverage budget
       const allowedLen = Math.min(gapLen, Math.max(0, maxCoverage - covered));
-      if (allowedLen < 0.5) continue; // too small to be meaningful
+      if (allowedLen < 0.5) continue; 
 
       // commit gap
       taken.push({z0, z1: z0 + allowedLen});
@@ -349,7 +342,6 @@ function configureSegmentDifficulty(segment){
       strip.name = 'gap_strip';
       strip.castShadow = false;
       strip.receiveShadow = false;
-      // render above path to avoid z-fighting artifacts
       strip.renderOrder = 1;
 
       scene.add(strip);
@@ -361,7 +353,6 @@ function configureSegmentDifficulty(segment){
       createdGaps = true;
     }
   }
-  // keep segment always visible and mark that we created small gaps (no full disappear)
   segment.visible = true;
   segment.userData.isGap = false;
   lastSegmentWasGap = createdGaps;
@@ -379,10 +370,6 @@ function gapProbability(){ if (score < gapStartScore) return 0; const t = Math.m
 
 // --- Spawning & prefabs () ---
 function spawnDynamicObjects(segment){
-  // remove full-gap behavior; we now create only small gap strips
-  // if (segment.userData.isGap){ spawnPlatformsAcrossGap(segment); return; }
-
-  // increase prefab spawn chance a bit
   const prefabChance = clamp((score/200), 0.2, 0.75);
   if (Math.random() < prefabChance){
     const prefab = randChoice(prefabs);
@@ -395,12 +382,11 @@ function spawnDynamicObjects(segment){
   spawnObject(segment.position.z + segmentLength*0.25);
   if (Math.random() < 0.85) spawnObject(segment.position.z);
 
-  // Add: extra platform-focused spawns to increase simultaneous platforms
   if (Math.random() < 0.6) spawnObject(segment.position.z - segmentLength*0.35, true);
   if (Math.random() < 0.6) spawnObject(segment.position.z + segmentLength*0.35, true);
 }
 
-// spawn platform clusters across gap (uses jump-based spacing)
+// spawn platform clusters across gap
 function spawnPlatformsAcrossGap(segment){
   const usableLength = segmentLength*0.95;
   const startZ = segment.position.z - usableLength/2;
@@ -431,7 +417,6 @@ function spawnPlatformsAcrossGap(segment){
 function spawnObject(zPos, forcedPlatform=false, patternObj=null){
   const width = pathWidth;
   let x = patternObj && typeof patternObj.x !== 'undefined' ? patternObj.x : (Math.random()*2-1)*(width/2 - 0.9);
-  // Increase platform probability so more platforms appear overall
   let type = patternObj && patternObj.type ? patternObj.type : (forcedPlatform ? 'platform' : (Math.random()<0.75 ? 'platform':'obstacle'));
   let obj = null;
 
@@ -441,10 +426,9 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
     const h = patternObj && patternObj.y ? patternObj.y : (minY + Math.random()*(maxY - minY));
     const size = patternObj && patternObj.size ? patternObj.size : { w: 2, h:0.45, d: 2 };
 
-    // Sometimes spawn multiple platforms at once in an equidistant row
     const spawnRow = !patternObj && Math.random() < 0.6;
     if (spawnRow){
-      const count = 2 + Math.floor(Math.random()*2); // 2 or 3
+      const count = 2 + Math.floor(Math.random()*2); 
       const halfW = pathWidth/2;
       const margin = 0.6;
       const leftEdge = -halfW + margin + size.w/2;
@@ -476,11 +460,10 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
         scene.add(p);
         worldObjects.push(p);
       }
-      // row spawned; skip single-object flow
       return;
     }
 
-    // Single platform (lower height baseline)
+    // Single platform
     const geom = new THREE.BoxGeometry(size.w, size.h, size.d);
     const mat = createNeonMaterial(randChoice(OBJECT_COLORS), 1.8);
     obj = new THREE.Mesh(geom, mat);
@@ -497,9 +480,7 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
       makePlatformCrumble(obj);
     }
   } else {
-    // obstacle - cube or small pillar
     if (Math.random() < 0.45){
-      // Pillars: sometimes spawn a row (2-3) equidistant on X, with staggered movement start
       const spawnRow = Math.random() < 0.7;
       if (spawnRow){
         const count = 2 + Math.floor(Math.random()*2); // 2 or 3
@@ -533,7 +514,6 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
             pillar.userData.initialY = pillar.position.y;
             pillar.userData.speed = baseSpeed * (0.95 + Math.random()*0.1);
             if (rowMoveType === 'horizontal'){
-              // full-width sweep from current position
               pillar.userData.range = (halfW - safeMargin) + Math.abs(pillar.userData.initialX);
             } else {
               pillar.userData.range = 0.6 + Math.random()*1.8;
@@ -545,10 +525,8 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
           scene.add(pillar);
           worldObjects.push(pillar);
         }
-        // row spawned; skip single-object flow
         return;
       } else {
-        // Single pillar (original behavior)
         const geom = new THREE.CylinderGeometry(0.5,0.5,1.2,12);
         const mat = createNeonMaterial(randChoice(OBJECT_COLORS), 2.0);
         obj = new THREE.Mesh(geom, mat);
@@ -556,7 +534,6 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
         obj.name = 'obstacle';
       }
     } else {
-      // Create a row of cubes that fills the path width without exceeding it
       const cubeW = 1.2;
       const cubeH = 1.2;
       const spacing = 0.2;
@@ -590,7 +567,6 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
           cube.userData.initialY = cube.position.y;
           cube.userData.speed = baseSpeed * (0.95 + Math.random()*0.1);
           if (rowMoveType === 'horizontal'){
-            // Sweep full width from current position
             const margin = 0.6;
             cube.userData.range = (halfW - margin) + Math.abs(cube.userData.initialX);
           } else {
@@ -612,7 +588,6 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
       obj.userData.initialX = obj.position.x;
       obj.userData.initialY = obj.position.y;
       obj.userData.speed = 1.8 + Math.random()*2.2;
-      // Allow full-width sweep for horizontals; keep vertical random
       if (obj.userData.movementType === 'horizontal'){
         const halfW = pathWidth/2;
         const margin = 0.6;
@@ -632,7 +607,7 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
 
 // ---  prefabs implementations ---
 
-// 1) Neon Gates: gentle gates near the edges leaving a wide center lane
+// 1) Neon gates
 function spawnNeonGates(centerZ){
   const steps = 4 + Math.floor(Math.random()*2);
   const gapZ = 10 ;
@@ -641,7 +616,6 @@ function spawnNeonGates(centerZ){
   const halfW = pathWidth/2;
   for (let i=0;i<steps;i++){
     const z = centerZ + (i - steps/2)*gapZ;
-    // left and right pillars
     const geom = new THREE.BoxGeometry(pillarW, pillarH, 0.5);
     const mat = createNeonMaterial(randChoice(OBJECT_COLORS), 2.2);
     const left = new THREE.Mesh(geom, mat);
@@ -652,7 +626,6 @@ function spawnNeonGates(centerZ){
     right.castShadow = true; right.receiveShadow = true; right.name = 'gate';
     scene.add(left); scene.add(right);
     worldObjects.push(left); worldObjects.push(right);
-    // top beam (higher, purely visual)
     const topBeam = new THREE.Mesh(
       new THREE.BoxGeometry(pathWidth - pillarW*2 - 0.6, 0.2, 0.4),
       createNeonMaterial(randChoice(OBJECT_COLORS), 1.8)
@@ -667,7 +640,7 @@ function spawnNeonGates(centerZ){
   }
 }
 
-// 2) Sweeper Pair: two side sweepers moving slowly near edges, leaving a safe middle lane
+// 2) Sweeper pair
 function spawnSweeperPair(centerZ){
   const halfW = pathWidth/2;
   const len = 2.6;
@@ -677,15 +650,14 @@ function spawnSweeperPair(centerZ){
   const margin = 0.6;
   const makeSweeper = (side)=> {
     const bar = new THREE.Mesh(barGeom, mat.clone());
-    // Start at center and sweep full width
     bar.position.set(0, 0.9, centerZ);
     bar.castShadow = true; bar.receiveShadow = true; bar.name = 'sweeper';
     bar.userData.isMoving = true;
     bar.userData.movementType = 'horizontal';
     bar.userData.initialX = 0;
-    bar.userData.range = halfW - margin;       // traverse whole width
+    bar.userData.range = halfW - margin;       
     bar.userData.speed = 1.4 + Math.random()*2.0;
-    bar.userData.phase = side > 0 ? 0 : Math.PI; // alternate
+    bar.userData.phase = side > 0 ? 0 : Math.PI;
     scene.add(bar); worldObjects.push(bar);
   };
 
@@ -693,7 +665,7 @@ function spawnSweeperPair(centerZ){
   makeSweeper(1);
 }
 
-// 3) Pulsing Rings: static rings that gently pulse in size and sit slightly above ground
+// 3) Pulsing rings
 function spawnPulsingRings(centerZ){
   const count = 2 + Math.floor(Math.random()*2);
   for (let i=0;i<count;i++){
@@ -713,7 +685,7 @@ function spawnPulsingRings(centerZ){
   }
 }
 
-// 5) Stairs: a series of small platforms ascending in height
+// 5) Stairs
 function spawnStairs(centerZ){
   const steps = 5 + Math.floor(Math.random()*3); // 5..7 steps
   const stepDepth = 5;                          // z size of each step
@@ -731,7 +703,7 @@ function spawnStairs(centerZ){
     const mat = createNeonMaterial(randChoice(OBJECT_COLORS), 2.0);
     const platform = new THREE.Mesh(geom, mat);
     platform.position.set(0, y, z);
-    platform.name = 'platform'; // keep as a stable landing surface (no crumble)
+    platform.name = 'platform';
     platform.castShadow = true;
     platform.receiveShadow = true;
 
@@ -748,7 +720,7 @@ function makePlatformCrumble(platform){
 }
 
 
-// 6) Wall Slalom: alternating walls creating narrow S path
+// 6) Wall slalom
 function spawnWallSlalom(centerZ){
   const steps = 5 + Math.floor(Math.random()*4);
   const gap = 8;
@@ -767,7 +739,7 @@ function spawnWallSlalom(centerZ){
   }
 }
 
-// 7) Floating Orbs: moving spheres that chase slightly horizontally
+// 7) Floating orbs
 function spawnFloatingOrbs(centerZ){
   const cnt = 3 + Math.floor(Math.random()*6);
   for (let i=0;i<cnt;i++){
@@ -778,10 +750,9 @@ function spawnFloatingOrbs(centerZ){
     orb.position.set(x, 1.2 + Math.random()*1.6, centerZ + (i-(cnt/2))*3.2);
     orb.name = 'orb';
     orb.userData.isFloating = true;
-    orb.userData.speed = 1.2 + Math.random()*1.6; // faster bob/drift
+    orb.userData.speed = 1.2 + Math.random()*1.6; 
     orb.userData.range = 1.4 + Math.random()*2.0;
     orb.userData.phase = Math.random()*Math.PI*2;
-    // ensure we have a baseline for vertical oscillation
     orb.userData.initialY = orb.position.y;
     scene.add(orb);
     worldObjects.push(orb);
@@ -816,17 +787,15 @@ function hasGroundUnderPlayer(){
   const px = player.position.x;
   const pz = player.position.z;
   for (const seg of pathSegments){
-    // ignore full gaps (not used anymore), keep check by z and width
     const z0 = seg.position.z - segmentLength/2;
     const z1 = seg.position.z + segmentLength/2;
     if (pz >= z0 && pz <= z1){
       const halfW = seg.userData.width/2;
       if (px >= -halfW && px <= halfW){
-        // check if inside any small gap strip on this segment
         if (seg.userData && Array.isArray(seg.userData.gapZones)){
           for (const gz of seg.userData.gapZones){
             if (pz >= gz.z0 && pz <= gz.z1){
-              return false; // over a small gap -> no ground
+              return false;
             }
           }
         }
@@ -884,16 +853,13 @@ function updatePlayer(delta){
         player.position.y = topY + r;
         playerVelocity.y = 0;
         playerOnGround = true;
-        // crumble logic
         if (obj.userData.crumble && !obj.userData.crumbleTriggered){
           obj.userData.crumbleTriggered = true;
-          setTimeout(()=>{ // fall after short delay
+          setTimeout(()=>{ 
             // drop animation
             const fallVel = { v:0 };
-            // remove collision by setting name and making invisible to ground check
             obj.name = 'falling';
             obj.userData.isFalling = true;
-            // let physics in animate handle dropping and removal
           }, 600 + Math.random()*700);
         }
       } else {
@@ -970,9 +936,9 @@ function respawnPlayer(){
 // Helper: pause without countdown (resume with SPACE)
 function pauseIfRunning(){
   if (gameOver) return;
-  if (!gameStarted) return;                 // keep the start overlay as-is
-  if (countdownActive) return;              // don't interrupt respawn/initial countdown
-  if (paused) return;                       // already paused
+  if (!gameStarted) return;                 
+  if (countdownActive) return;              
+  if (paused) return;              
 
   paused = true;
   if (countdownDiv) countdownDiv.style.display = 'block';
@@ -990,7 +956,7 @@ function animate(){
 
   const delta = clock.getDelta();
 
-  // If paused, only update countdown and render frame (no world/score updates)
+  // If paused, only update countdown and render frame 
   if (paused){
     updateCountdown(delta);
     renderer.render(scene, camera);
@@ -1008,7 +974,7 @@ function animate(){
 
   // Update current path width once per frame
   pathWidth = currentPathWidth();
-  currentDifficultyPathWidth = pathWidth; // keep legacy var in sync
+  currentDifficultyPathWidth = pathWidth; 
 
   // update world objects movement & cleanup
   const removeSet = new Set();
@@ -1034,7 +1000,6 @@ function animate(){
     }
     if (obj.userData.isRotating){
       obj.rotation.z += obj.userData.spinSpeed * delta;
-      // orbit blades slowly
       if (obj.userData.orbitRadius){
         const t = clock.elapsedTime * obj.userData.orbitSpeed;
         obj.position.x = Math.cos(t) * obj.userData.orbitRadius;
@@ -1051,19 +1016,15 @@ function animate(){
       obj.position.z += gameSpeed * delta * 0.1;
       if (obj.position.y < -30) { removeSet.add(obj); }
     }
-    // Pulsing ring scale animation
     if (obj.userData && obj.userData.pulse){
       const s = 1 + Math.sin(clock.elapsedTime * obj.userData.pulseSpeed + (obj.userData.phase||0))*0.2;
       obj.scale.set(s, s, s);
     }
 
-    // Make the entire world move toward the player/camera
     obj.position.z += gameSpeed * delta;
 
-    // blade collision special: blades are groups; build bounding box
     if (obj.name === 'blade'){
       const box = new THREE.Box3().setFromObject(obj);
-      // simple rotation visual handled above
     }
 
     // recycle path segments
@@ -1097,7 +1058,7 @@ function animate(){
     if (p.userData.life <= 0){ scene.remove(p); particleSystems.splice(i,1); }
   }
 
-  // Jump buffer + coyote time (process before physics integration)
+  // Jump buffer + coyote time 
   if (jumpBuffer > 0) jumpBuffer -= delta;
   if (playerOnGround) {
     coyoteTimer = COYOTE_TIME;        // refresh while grounded
@@ -1114,7 +1075,7 @@ function animate(){
   // update player & collisions
   updatePlayer(delta);
 
-  // Arrow keys horizontal movement (in addition to mouse control)
+  // Arrow keys horizontal movement
   const axis = (inputRight ? 1 : 0) - (inputLeft ? 1 : 0);
   if (axis !== 0){
     const halfW = pathWidth / 2;
@@ -1131,7 +1092,7 @@ function animate(){
 
   // Update lights to follow the player every frame
   if (player){
-    // Directional light: above and slightly behind, aiming a bit forward
+    // Directional light
     if (dirLight && shadowTarget){
       const above = 22;
       const lookAhead = 6;
@@ -1139,7 +1100,7 @@ function animate(){
       dirLight.position.set(player.position.x + 6, player.position.y + above, player.position.z + 10);
       dirLight.shadow.camera.updateProjectionMatrix();
     }
-    // Spotlight: straight above player, aiming right at the player
+    // Spotligh
     if (spotLight){
       spotLight.position.set(player.position.x, player.position.y + 12, player.position.z + 3);
       spotLight.target.position.set(player.position.x, player.position.y, player.position.z);
@@ -1155,7 +1116,7 @@ function animate(){
   if (stats) stats.end();
 }
 
-// Helper: start game countdown on Space from initial state
+// Start game countdown on Space from initial state
 function startGameCountdown(){
   // Do nothing if the game already started or a countdown is in progress
   if (gameStarted || countdownActive) return;
@@ -1188,7 +1149,7 @@ function setupControls(){
         e.preventDefault();
         return;
       }
-      // If paused (manual/auto), resume with Space (unless a countdown is running)
+      // If paused, resume with Space
       if (paused){
         if (!countdownActive){
           paused = false;
@@ -1202,7 +1163,7 @@ function setupControls(){
       e.preventDefault();
       return;
     }
-    // P key: pause game (resume with Space)
+    // P key: pause game 
     if (e.code === 'KeyP'){
       if (gameStarted && !gameOver && !countdownActive){
         pauseIfRunning();
@@ -1218,7 +1179,7 @@ function setupControls(){
     if (e.code === 'ArrowLeft'){ inputLeft = false; e.preventDefault(); }
     if (e.code === 'ArrowRight'){ inputRight = false; e.preventDefault(); }
   });
-  // Mouse click to jump (like Space)
+  // Mouse click to jump 
   document.addEventListener('mousedown', (e)=>{
     if (gameOver || paused || !gameStarted) return;
     if (e.button === 0){
@@ -1230,7 +1191,6 @@ function setupControls(){
     if (gameOver || paused) return;
     const mx = (e.clientX / window.innerWidth)*2 - 1;
     const halfW = pathWidth/2;
-    // Map to current path width instead of base width
     player.position.x = clamp(mx * (pathWidth/2), -halfW + 0.6, halfW - 0.6);
   });
 }
@@ -1289,7 +1249,7 @@ function restart(){
 
   scene.updateMatrixWorld(true);
 
-  // Go back to "press Space to start" flow
+  // Go back
   paused = true;
   gameStarted = false;
   countdownActive = false;

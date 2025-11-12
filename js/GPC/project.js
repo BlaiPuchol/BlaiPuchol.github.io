@@ -271,6 +271,10 @@ function createPathSegment(zPos){
   scene.add(segment);
   pathSegments.push(segment);
   worldObjects.push(segment);
+
+  // Add repeating texture to the floor
+  applyRectTexture(segment, { w: basePathWidth, d: segmentLength });
+
   return segment;
 }
 
@@ -282,6 +286,14 @@ function configureSegmentDifficulty(segment){
   segment.userData.width = pathWidth;
   segment.scale.x = pathWidth / basePathWidth;
 
+  // Keep floor texture tiling in sync with current width
+  updateRectTextureRepeat(segment, { w: pathWidth, d: segmentLength });
+
+  // Reset background spawn flag when segment is recycled (moved in z)
+  if (segment.userData._lastZ !== segment.position.z) {
+    segment.userData.bgSpawned = false;
+    segment.userData._lastZ = segment.position.z;
+  }
 
   if (segment.userData.gapMeshes && segment.userData.gapMeshes.length){
     for (const gm of segment.userData.gapMeshes){
@@ -363,6 +375,9 @@ function configureSegmentDifficulty(segment){
     segment.material.emissive.setHex(PATH_EMISSIVE);
     segment.material.emissiveIntensity = 0.35;
   }
+
+  // Spawn side background (only once per segment position)
+  spawnBackgroundForSegment(segment);
 }
 
 function currentPathWidth(){ if (score < shrinkStartScore) return basePathWidth; const t = Math.min((score - shrinkStartScore)/(shrinkFullScore - shrinkStartScore),1); return basePathWidth - t*(basePathWidth-minPathWidth); }
@@ -459,6 +474,9 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
 
         scene.add(p);
         worldObjects.push(p);
+
+        // Apply texture to platform
+        applyRectTexture(p, { w: size.w, d: size.d });
       }
       return;
     }
@@ -479,6 +497,9 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
     if (Math.random() < 0.15){
       makePlatformCrumble(obj);
     }
+
+    // Apply texture to platform
+    applyRectTexture(obj, { w: size.w, d: size.d });
   } else {
     if (Math.random() < 0.45){
       const spawnRow = Math.random() < 0.7;
@@ -560,6 +581,9 @@ function spawnObject(zPos, forcedPlatform=false, patternObj=null){
         cube.castShadow = true;
         cube.receiveShadow = true;
 
+        // Apply texture to box obstacle
+        applyRectTexture(cube, { w: cubeW, d: 1.2 });
+
         if (rowMoves){
           cube.userData.isMoving = true;
           cube.userData.movementType = rowMoveType;
@@ -637,6 +661,13 @@ function spawnNeonGates(centerZ){
     }
     topBeam.castShadow = true; topBeam.receiveShadow = true; topBeam.name = 'gate';
     scene.add(topBeam); worldObjects.push(topBeam);
+
+    // Texture for gate pillar
+    applyRectTexture(left, { w: pillarW, d: 0.5 });
+    applyRectTexture(right, { w: pillarW, d: 0.5 });
+
+    // Texture for top beam
+    applyRectTexture(topBeam, { w: (pathWidth - pillarW*2 - 0.6), d: 0.4 });
   }
 }
 
@@ -659,6 +690,9 @@ function spawnSweeperPair(centerZ){
     bar.userData.speed = 1.4 + Math.random()*2.0;
     bar.userData.phase = side > 0 ? 0 : Math.PI;
     scene.add(bar); worldObjects.push(bar);
+
+    // Texture for sweeper bar
+    applyRectTexture(bar, { w: 1.6, d: len });
   };
 
   makeSweeper(-1);
@@ -709,6 +743,9 @@ function spawnStairs(centerZ){
 
     scene.add(platform);
     worldObjects.push(platform);
+
+    // Texture for stair step
+    applyRectTexture(platform, { w, d: stepDepth });
   }
 }
 
@@ -718,7 +755,6 @@ function makePlatformCrumble(platform){
   // small tint
   platform.material.emissiveIntensity = 1.6;
 }
-
 
 // 6) Wall slalom
 function spawnWallSlalom(centerZ){
@@ -736,6 +772,9 @@ function spawnWallSlalom(centerZ){
     wall.name = 'wall';
     scene.add(wall);
     worldObjects.push(wall);
+
+    // Texture for wall
+    applyRectTexture(wall, { w, d: (gap - 0.4) });
   }
 }
 
@@ -757,6 +796,60 @@ function spawnFloatingOrbs(centerZ){
     scene.add(orb);
     worldObjects.push(orb);
   }
+}
+
+// Background mountains along both sides of the path
+function spawnBackgroundForSegment(segment){
+  if (!segment || segment.userData.bgSpawned) return;
+
+  const z0 = segment.position.z - segmentLength / 2;
+  const z1 = segment.position.z + segmentLength / 2;
+
+  // Place outside playable lane
+  const leftXBase = - (basePathWidth / 2) - 6;
+  const rightXBase = (basePathWidth / 2) + 6;
+
+  const perSide = 2;
+
+  const makeBlock = (xBase)=>{
+    const w = 4 + Math.random() * 9;       // width
+    const d = 6 + Math.random() * 10;      // depth along z
+    const hTop = 3 + Math.random() * 10;   // height above y=0 (top height)
+    const down = 80;                      
+    const totalH = hTop + down;
+    const xJitter = (Math.random() * 4) * (xBase < 0 ? -1 : 1);
+    const z = z0 + Math.random() * (z1 - z0);
+    const x = xBase + xJitter;
+
+    const geom = new THREE.BoxGeometry(w, totalH, d);
+    const mat = createNeonMaterial(randChoice(OBJECT_COLORS), 0.6);
+
+    mat.transparent = true;
+    mat.opacity = 0.85;
+    mat.depthWrite = false;
+
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.position.set(x, (hTop - down) / 2, z);
+    mesh.name = 'background';
+    mesh.userData.isBackground = true;
+    mesh.userData.baseOpacity = mat.opacity;
+    
+    mesh.position.set(x, (hTop - down) / 2, z);
+    mesh.name = 'background';
+    mesh.userData.isBackground = true;
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+
+    scene.add(mesh);
+    worldObjects.push(mesh);
+  };
+
+  for (let i = 0; i < perSide; i++){
+    makeBlock(leftXBase);
+    makeBlock(rightXBase);
+  }
+
+  segment.userData.bgSpawned = true;
 }
 
 // --- Particle & FX helpers ---
@@ -840,6 +933,8 @@ function updatePlayer(delta){
   for (const obj of worldObjects){
     if (obj === player) continue;
     if (obj.name === 'path') continue;
+    // Skip background decor
+    if (obj.userData && obj.userData.isBackground) continue;
     // skip removed
     if (!obj.parent) continue;
     const objBox = new THREE.Box3().setFromObject(obj);
@@ -922,6 +1017,8 @@ function respawnPlayer(){
   for (let i=worldObjects.length-1;i>=0;i--){
     const o = worldObjects[i];
     if (!o.parent) continue;
+    // Keep background decor persistent across respawn
+    if (o.userData && o.userData.isBackground) continue;
     if (o.name !== 'player' && o.name !== 'path' && Math.abs(o.position.z) < 30){
       scene.remove(o);
       worldObjects.splice(i,1);
@@ -1128,6 +1225,8 @@ function startGameCountdown(){
   for (let i=worldObjects.length-1;i>=0;i--){
     const o = worldObjects[i];
     if (!o.parent) continue;
+    // Do not remove background decor
+    if (o.userData && o.userData.isBackground) continue;
     if (o.name !== 'player' && o.name !== 'path' && Math.abs(o.position.z) < 40){
       scene.remove(o);
       worldObjects.splice(i,1);
@@ -1263,4 +1362,117 @@ function restart(){
 // Provide alias used by loseLife to avoid runtime error
 function showGameOver(){ return showGameOverChaos(); }
 
-init()
+// Texture helpers for rectangular meshes
+let rectTexture = null;
+const rectTextureURL = "materials/seamless.jpg";
+const TILE_UNIT = 3.0;
+let rectTextureReady = false;
+const pendingRectMeshes = []; // queue while texture loads
+
+function createCheckerTexture(size = 64, squares = 8, fg = '#1a1a1a', bg = '#0b0f1d') {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const step = size / squares;
+  for (let y = 0; y < squares; y++) {
+    for (let x = 0; x < squares; x++) {
+      ctx.fillStyle = ((x + y) % 2 === 0) ? bg : fg;
+      ctx.fillRect(x * step, y * step, step, step);
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  if (THREE.RepeatWrapping) {
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  }
+  if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
+  tex.anisotropy = 8;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function processPendingRectMeshes(){
+  if (!rectTextureReady || !rectTexture || !rectTexture.image) return;
+  for (const item of pendingRectMeshes){
+    if (!item.mesh || !item.mesh.material) continue;
+    const base = rectTexture;
+    const tex = base.clone();
+    tex.image = base.image;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
+    tex.anisotropy = 8;
+    tex.needsUpdate = true;
+    item.mesh.material.map = tex;
+    item.mesh.material.needsUpdate = true;
+    updateRectTextureRepeat(item.mesh, item.dims);
+  }
+  pendingRectMeshes.length = 0;
+}
+
+function getRectTexture() {
+  if (rectTexture) return rectTexture;
+  if (rectTextureURL){
+    rectTexture = new THREE.TextureLoader().load(
+      rectTextureURL,
+      (tex)=>{
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
+        tex.anisotropy = 8;
+        rectTextureReady = true;
+        processPendingRectMeshes();
+      },
+      undefined,
+      ()=>{ 
+        rectTexture = createCheckerTexture();
+        rectTextureReady = true;
+        processPendingRectMeshes();
+      }
+    );
+    rectTexture.wrapS = rectTexture.wrapT = THREE.RepeatWrapping;
+    if (THREE.sRGBEncoding) rectTexture.encoding = THREE.sRGBEncoding;
+    rectTexture.anisotropy = 8;
+    return rectTexture;
+  }
+  rectTexture = createCheckerTexture();
+  rectTextureReady = true;
+  return rectTexture;
+}
+
+function applyRectTexture(mesh, dims) {
+  if (!mesh || !mesh.material) return;
+  const base = getRectTexture();
+  if (!rectTextureReady || !base.image){
+    // assign temporary procedural fallback (lightweight)
+    const temp = createCheckerTexture(32, 4, '#121212', '#0a0d16');
+    temp.wrapS = temp.wrapT = THREE.RepeatWrapping;
+    mesh.material.map = temp;
+    mesh.material.needsUpdate = true;
+    updateRectTextureRepeat(mesh, dims);
+    pendingRectMeshes.push({ mesh, dims });
+    return;
+  }
+  const tex = base.clone();
+  tex.image = base.image;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
+  tex.anisotropy = 8;
+  tex.needsUpdate = true;
+  mesh.material.map = tex;
+  mesh.material.needsUpdate = true;
+  updateRectTextureRepeat(mesh, dims);
+}
+
+function updateRectTextureRepeat(mesh, dims) {
+  if (!mesh || !mesh.material || !mesh.material.map) return;
+  const map = mesh.material.map;
+  const p = mesh.geometry && mesh.geometry.parameters || {};
+  let worldW = (dims && dims.w) || (p.width || p.w || 1) * (mesh.scale?.x || 1);
+  let worldD = (dims && dims.d) || ((p.depth || p.d || p.height || 1) * (mesh.scale?.z || 1));
+  // Minimal sane values
+  worldW = Math.max(0.001, worldW);
+  worldD = Math.max(0.001, worldD);
+  const rx = Math.max(1, Math.round(worldW / TILE_UNIT));
+  const rz = Math.max(1, Math.round(worldD / TILE_UNIT));
+  map.repeat.set(rx, rz);
+}
+
+init();

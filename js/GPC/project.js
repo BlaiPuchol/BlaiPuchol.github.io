@@ -90,8 +90,8 @@ function createNeonMaterial(colorHex, intensity = 1.4) {
   return new THREE.MeshStandardMaterial({
     color: colorHex,
     emissive: new THREE.Color(colorHex),
-    emissiveIntensity: intensity,
-    metalness: 0.8,
+    emissiveIntensity: intensity * 2.0, // Boost intensity for more shine
+    metalness: 0.6,
     roughness: 0.15,
     transparent: true,
     opacity: 0.7, // Keep semi-transparent so background color is visible
@@ -1381,14 +1381,14 @@ function createCheckerTexture(size = 512, squares = 8, fg = '#1a1a1a', bg = '#0b
   
   // Lines: White, full opacity (neon edges)
   ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 6; 
   ctx.lineJoin = 'round';
   
   // Border
   ctx.strokeRect(0, 0, size, size);
   
   // Inner cross for detail
-  ctx.lineWidth = 6;
+  ctx.lineWidth = 8;
   ctx.beginPath();
   ctx.moveTo(size/2, 0); ctx.lineTo(size/2, size);
   ctx.moveTo(0, size/2); ctx.lineTo(size, size/2);
@@ -1489,8 +1489,8 @@ function applyRectTexture(mesh, dims) {
       tex.needsUpdate = true;
       
       mat.map = tex;
-      // Assign texture to emissiveMap so the neon lines glow properly
       mat.emissiveMap = tex;
+      mat.emissive.setHex(0xffffff); 
       mat.transparent = true;
       mat.opacity = 0.8;
       materials.push(mat);
@@ -1528,6 +1528,7 @@ function applyRectTexture(mesh, dims) {
     
     mat.map = tex;
     mat.emissiveMap = tex;
+    mat.emissive.setHex(0xffffff);
     mat.needsUpdate = true;
   }
 }

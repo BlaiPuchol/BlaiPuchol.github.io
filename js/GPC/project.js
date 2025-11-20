@@ -90,9 +90,12 @@ function createNeonMaterial(colorHex, intensity = 1.4) {
   return new THREE.MeshStandardMaterial({
     color: colorHex,
     emissive: new THREE.Color(colorHex),
-    emissiveIntensity: intensity * 0.3, // Reduced brightness so textures are visible
-    metalness: 0.6,
-    roughness: 0.15
+    emissiveIntensity: intensity,
+    metalness: 0.8,
+    roughness: 0.15,
+    transparent: true,
+    opacity: 0.7, // Keep semi-transparent so background color is visible
+    side: THREE.DoubleSide
   });
 }
 
@@ -832,15 +835,14 @@ function spawnBackgroundForSegment(segment){
     mesh.position.set(x, (hTop - down) / 2, z);
     mesh.name = 'background';
     mesh.userData.isBackground = true;
-    
-    mesh.position.set(x, (hTop - down) / 2, z);
-    mesh.name = 'background';
-    mesh.userData.isBackground = true;
     mesh.castShadow = false;
     mesh.receiveShadow = false;
 
     scene.add(mesh);
     worldObjects.push(mesh);
+
+    // Apply texture to background blocks
+    applyRectTexture(mesh, { w, d });
   };
 
   for (let i = 0; i < perSide; i++){
@@ -1363,22 +1365,35 @@ function showGameOver(){ return showGameOverChaos(); }
 
 // Texture helpers for rectangular meshes
 let rectTexture = null;
-const rectTextureURL = "materials/seamless.jpg";
-const TILE_UNIT = 3.0;
+const rectTextureURL = "materials/neon_cube.png";
+const TILE_UNIT = 2.0;
 let rectTextureReady = false;
 const pendingRectMeshes = []; // queue while texture loads
 
-function createCheckerTexture(size = 64, squares = 8, fg = '#1a1a1a', bg = '#0b0f1d') {
+function createCheckerTexture(size = 512, squares = 8, fg = '#1a1a1a', bg = '#0b0f1d') {
   const c = document.createElement('canvas');
   c.width = c.height = size;
   const ctx = c.getContext('2d');
-  const step = size / squares;
-  for (let y = 0; y < squares; y++) {
-    for (let x = 0; x < squares; x++) {
-      ctx.fillStyle = ((x + y) % 2 === 0) ? bg : fg;
-      ctx.fillRect(x * step, y * step, step, step);
-    }
-  }
+  
+  // Fill: Dark with low opacity (transparent face)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; 
+  ctx.fillRect(0, 0, size, size);
+  
+  // Lines: White, full opacity (neon edges)
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 3;
+  ctx.lineJoin = 'round';
+  
+  // Border
+  ctx.strokeRect(0, 0, size, size);
+  
+  // Inner cross for detail
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(size/2, 0); ctx.lineTo(size/2, size);
+  ctx.moveTo(0, size/2); ctx.lineTo(size, size/2);
+  ctx.stroke();
+
   const tex = new THREE.CanvasTexture(c);
   if (THREE.RepeatWrapping) {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -1391,7 +1406,6 @@ function createCheckerTexture(size = 64, squares = 8, fg = '#1a1a1a', bg = '#0b0
 
 function processPendingRectMeshes(){
   if (!rectTextureReady || !rectTexture || !rectTexture.image) return;
-  // Process all pending meshes using the new texture logic
   for (const item of pendingRectMeshes){
     applyRectTexture(item.mesh, item.dims);
   }
@@ -1430,7 +1444,6 @@ function getRectTexture() {
 function applyRectTexture(mesh, dims) {
   if (!mesh) return;
   
-  // Handle pending queue if texture isn't ready
   const baseTex = getRectTexture();
   const isTemp = !rectTextureReady || !baseTex.image;
   
@@ -1444,42 +1457,21 @@ function applyRectTexture(mesh, dims) {
   
   if (isBox) {
     const p = mesh.geometry.parameters;
-    // Determine dimensions (use provided dims or geometry defaults)
     let w = (dims && dims.w) !== undefined ? dims.w : (p.width || 1);
     let h = (dims && dims.h) !== undefined ? dims.h : (p.height || 1);
     let d = (dims && dims.d) !== undefined ? dims.d : (p.depth || 1);
     
-    // Apply mesh scaling
     w *= (mesh.scale.x || 1);
     h *= (mesh.scale.y || 1);
     d *= (mesh.scale.z || 1);
 
-    // Face dimensions (u, v) for: +x, -x, +y, -y, +z, -z
-    // +x (Right), -x (Left): Depth * Height
-    // +y (Top), -y (Bottom): Width * Depth
-    // +z (Front), -z (Back): Width * Height
     const faceDims = [
       [d, h], [d, h], 
       [w, d], [w, d], 
       [w, h], [w, h]  
     ];
 
-    // If already set up as array, update in place
-    if (Array.isArray(mesh.material) && mesh.material.length === 6 && mesh.material[0].map) {
-      for(let i=0; i<6; i++) {
-         const tex = mesh.material[i].map;
-         if (baseTex.image && tex.image !== baseTex.image) {
-             tex.image = baseTex.image;
-             tex.needsUpdate = true;
-         }
-         const u = faceDims[i][0];
-         const v = faceDims[i][1];
-         tex.repeat.set(Math.max(0.001, u/TILE_UNIT), Math.max(0.001, v/TILE_UNIT));
-      }
-      return;
-    }
-
-    // Create new material array for 6 faces
+    // Create new material array for 6 faces to fix deformation
     let originalMat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
     const materials = [];
     for (let i = 0; i < 6; i++) {
@@ -1497,12 +1489,16 @@ function applyRectTexture(mesh, dims) {
       tex.needsUpdate = true;
       
       mat.map = tex;
+      // Assign texture to emissiveMap so the neon lines glow properly
+      mat.emissiveMap = tex;
+      mat.transparent = true;
+      mat.opacity = 0.8;
       materials.push(mat);
     }
     mesh.material = materials;
 
   } else {
-    // PlaneGeometry or others (single face/material)
+    // PlaneGeometry (Path)
     const p = mesh.geometry.parameters || {};
     let worldW = (dims && dims.w) || (p.width || 1) * (mesh.scale.x || 1);
     let worldD = (dims && dims.d) || ((p.height || p.depth || 1) * (mesh.scale.z || 1));
@@ -1517,10 +1513,11 @@ function applyRectTexture(mesh, dims) {
           tex.needsUpdate = true;
        }
        tex.repeat.set(Math.max(0.001, worldW/TILE_UNIT), Math.max(0.001, worldD/TILE_UNIT));
+       // Ensure emissiveMap is also updated
+       if (!mat.emissiveMap) mat.emissiveMap = tex;
        return;
     }
 
-    // Create new map
     const tex = baseTex.clone();
     if (baseTex.image) tex.image = baseTex.image;
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -1530,6 +1527,7 @@ function applyRectTexture(mesh, dims) {
     tex.needsUpdate = true;
     
     mat.map = tex;
+    mat.emissiveMap = tex;
     mat.needsUpdate = true;
   }
 }

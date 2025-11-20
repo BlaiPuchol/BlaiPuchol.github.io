@@ -90,7 +90,7 @@ function createNeonMaterial(colorHex, intensity = 1.4) {
   return new THREE.MeshStandardMaterial({
     color: colorHex,
     emissive: new THREE.Color(colorHex),
-    emissiveIntensity: intensity,
+    emissiveIntensity: intensity * 0.3, // Reduced brightness so textures are visible
     metalness: 0.6,
     roughness: 0.15
   });
@@ -287,7 +287,7 @@ function configureSegmentDifficulty(segment){
   segment.scale.x = pathWidth / basePathWidth;
 
   // Keep floor texture tiling in sync with current width
-  updateRectTextureRepeat(segment, { w: pathWidth, d: segmentLength });
+  applyRectTexture(segment, { w: pathWidth, d: segmentLength });
 
   // Reset background spawn flag when segment is recycled (moved in z)
   if (segment.userData._lastZ !== segment.position.z) {
@@ -832,7 +832,6 @@ function spawnBackgroundForSegment(segment){
     mesh.position.set(x, (hTop - down) / 2, z);
     mesh.name = 'background';
     mesh.userData.isBackground = true;
-    mesh.userData.baseOpacity = mat.opacity;
     
     mesh.position.set(x, (hTop - down) / 2, z);
     mesh.name = 'background';
@@ -1392,18 +1391,9 @@ function createCheckerTexture(size = 64, squares = 8, fg = '#1a1a1a', bg = '#0b0
 
 function processPendingRectMeshes(){
   if (!rectTextureReady || !rectTexture || !rectTexture.image) return;
+  // Process all pending meshes using the new texture logic
   for (const item of pendingRectMeshes){
-    if (!item.mesh || !item.mesh.material) continue;
-    const base = rectTexture;
-    const tex = base.clone();
-    tex.image = base.image;
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
-    tex.anisotropy = 8;
-    tex.needsUpdate = true;
-    item.mesh.material.map = tex;
-    item.mesh.material.needsUpdate = true;
-    updateRectTextureRepeat(item.mesh, item.dims);
+    applyRectTexture(item.mesh, item.dims);
   }
   pendingRectMeshes.length = 0;
 }
@@ -1438,41 +1428,114 @@ function getRectTexture() {
 }
 
 function applyRectTexture(mesh, dims) {
-  if (!mesh || !mesh.material) return;
-  const base = getRectTexture();
-  if (!rectTextureReady || !base.image){
-    // assign temporary procedural fallback (lightweight)
-    const temp = createCheckerTexture(32, 4, '#121212', '#0a0d16');
-    temp.wrapS = temp.wrapT = THREE.RepeatWrapping;
-    mesh.material.map = temp;
-    mesh.material.needsUpdate = true;
-    updateRectTextureRepeat(mesh, dims);
-    pendingRectMeshes.push({ mesh, dims });
-    return;
+  if (!mesh) return;
+  
+  // Handle pending queue if texture isn't ready
+  const baseTex = getRectTexture();
+  const isTemp = !rectTextureReady || !baseTex.image;
+  
+  if (isTemp) {
+    if (!pendingRectMeshes.some(i => i.mesh === mesh)) {
+      pendingRectMeshes.push({ mesh, dims });
+    }
   }
-  const tex = base.clone();
-  tex.image = base.image;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
-  tex.anisotropy = 8;
-  tex.needsUpdate = true;
-  mesh.material.map = tex;
-  mesh.material.needsUpdate = true;
-  updateRectTextureRepeat(mesh, dims);
+
+  const isBox = mesh.geometry.type === 'BoxGeometry';
+  
+  if (isBox) {
+    const p = mesh.geometry.parameters;
+    // Determine dimensions (use provided dims or geometry defaults)
+    let w = (dims && dims.w) !== undefined ? dims.w : (p.width || 1);
+    let h = (dims && dims.h) !== undefined ? dims.h : (p.height || 1);
+    let d = (dims && dims.d) !== undefined ? dims.d : (p.depth || 1);
+    
+    // Apply mesh scaling
+    w *= (mesh.scale.x || 1);
+    h *= (mesh.scale.y || 1);
+    d *= (mesh.scale.z || 1);
+
+    // Face dimensions (u, v) for: +x, -x, +y, -y, +z, -z
+    // +x (Right), -x (Left): Depth * Height
+    // +y (Top), -y (Bottom): Width * Depth
+    // +z (Front), -z (Back): Width * Height
+    const faceDims = [
+      [d, h], [d, h], 
+      [w, d], [w, d], 
+      [w, h], [w, h]  
+    ];
+
+    // If already set up as array, update in place
+    if (Array.isArray(mesh.material) && mesh.material.length === 6 && mesh.material[0].map) {
+      for(let i=0; i<6; i++) {
+         const tex = mesh.material[i].map;
+         if (baseTex.image && tex.image !== baseTex.image) {
+             tex.image = baseTex.image;
+             tex.needsUpdate = true;
+         }
+         const u = faceDims[i][0];
+         const v = faceDims[i][1];
+         tex.repeat.set(Math.max(0.001, u/TILE_UNIT), Math.max(0.001, v/TILE_UNIT));
+      }
+      return;
+    }
+
+    // Create new material array for 6 faces
+    let originalMat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    const materials = [];
+    for (let i = 0; i < 6; i++) {
+      const mat = originalMat.clone();
+      const tex = baseTex.clone();
+      if (baseTex.image) tex.image = baseTex.image;
+      
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
+      tex.anisotropy = 8;
+      
+      const u = faceDims[i][0];
+      const v = faceDims[i][1];
+      tex.repeat.set(Math.max(0.001, u/TILE_UNIT), Math.max(0.001, v/TILE_UNIT));
+      tex.needsUpdate = true;
+      
+      mat.map = tex;
+      materials.push(mat);
+    }
+    mesh.material = materials;
+
+  } else {
+    // PlaneGeometry or others (single face/material)
+    const p = mesh.geometry.parameters || {};
+    let worldW = (dims && dims.w) || (p.width || 1) * (mesh.scale.x || 1);
+    let worldD = (dims && dims.d) || ((p.height || p.depth || 1) * (mesh.scale.z || 1));
+
+    let mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    
+    // Update existing map if present
+    if (mat.map) {
+       const tex = mat.map;
+       if (baseTex.image && tex.image !== baseTex.image) {
+          tex.image = baseTex.image;
+          tex.needsUpdate = true;
+       }
+       tex.repeat.set(Math.max(0.001, worldW/TILE_UNIT), Math.max(0.001, worldD/TILE_UNIT));
+       return;
+    }
+
+    // Create new map
+    const tex = baseTex.clone();
+    if (baseTex.image) tex.image = baseTex.image;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
+    tex.anisotropy = 8;
+    tex.repeat.set(Math.max(0.001, worldW/TILE_UNIT), Math.max(0.001, worldD/TILE_UNIT));
+    tex.needsUpdate = true;
+    
+    mat.map = tex;
+    mat.needsUpdate = true;
+  }
 }
 
 function updateRectTextureRepeat(mesh, dims) {
-  if (!mesh || !mesh.material || !mesh.material.map) return;
-  const map = mesh.material.map;
-  const p = mesh.geometry && mesh.geometry.parameters || {};
-  let worldW = (dims && dims.w) || (p.width || p.w || 1) * (mesh.scale?.x || 1);
-  let worldD = (dims && dims.d) || ((p.depth || p.d || p.height || 1) * (mesh.scale?.z || 1));
-  // Minimal sane values
-  worldW = Math.max(0.001, worldW);
-  worldD = Math.max(0.001, worldD);
-  const rx = Math.max(1, Math.round(worldW / TILE_UNIT));
-  const rz = Math.max(1, Math.round(worldD / TILE_UNIT));
-  map.repeat.set(rx, rz);
+  applyRectTexture(mesh, dims);
 }
 
 init();
